@@ -187,8 +187,10 @@ def main():
         for midi_path in tqdm(midi_files, desc="Infilling"):
             try:
                 ns = midi_file_to_note_sequence(midi_path)
+                log(ns)
                 tensors = converter.to_tensors(ns)
                 if not tensors.outputs:
+                    log("No tensor output!")
                     continue
 
                 original_tokens = tensors.outputs[0]
@@ -203,10 +205,12 @@ def main():
                          pass # OK
                 else:
                     if original_tokens.ndim != 2 or original_tokens.shape[1] < 3:
+                        log("Shape mismatch!")
                         continue
                 
                 if len(original_tokens) > H.NOTES:
-                     original_tokens = original_tokens[:H.NOTES]
+                    log("Shape truncation")
+                    original_tokens = original_tokens[:H.NOTES]
 
                 if len(original_tokens) <= mask_token_end:
                     log(f"Skipping {midi_path}: length {len(original_tokens)} < mask_end {mask_token_end}")
