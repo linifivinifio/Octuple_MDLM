@@ -108,11 +108,17 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
         # Scan tracks separately
         pitch_smoothness = []
         for gen_full in generated_samples:
-            if mask_start_step >= len(gen_full) or mask_start_step == 0:
+            s_arr = np.asarray(gen_full)
+            if mask_start_step >= len(s_arr) or mask_start_step == 0:
                 continue
-            # For each track (column)
-            for trk in range(gen_full.shape[1]):
-                 track_data = gen_full[:, trk]
+            
+            # Handle 1D melody vs 2D trio
+            if s_arr.ndim == 1:
+                tracks = [s_arr]
+            else:
+                tracks = [s_arr[:, trk] for trk in range(s_arr.shape[1])]
+
+            for track_data in tracks:
                  # Look back from mask_start
                  prev_idx = -1
                  for i in range(mask_start_step - 1, -1, -1):

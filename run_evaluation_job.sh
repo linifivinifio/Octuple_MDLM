@@ -27,8 +27,7 @@ python -c "import torch; print('Torch:', torch.__version__, 'CUDA:', torch.cuda.
 
 # Configuration
 MODEL_ID="schmu_tx_vae"
-RUN_DIR="runs/schmu_tx_vae_trio"  # Update to your actual run directory
-DATASET_ID="pop909_trio"
+RUN_DIR="runs/schmu_conv_vae_trio"  # Update to your actual run directory
 
 # Mini smoke-test sizes (fast). Increase once the job works end-to-end.
 N_SAMPLES_UNCOND=8
@@ -42,7 +41,6 @@ echo "========================================"
 echo "Starting Model Evaluation"
 echo "Model: $MODEL_ID"
 echo "Run Dir: $RUN_DIR"
-echo "Dataset: $DATASET_ID"
 echo "========================================"
 
 # ============================================================
@@ -57,7 +55,8 @@ python3 -m smdiff.cli.evaluate_trio \
     --model $MODEL_ID \
     --load_dir $RUN_DIR \
     --n_samples $N_SAMPLES_UNCOND \
-    --batch_size 4
+    --batch_size 4 \
+    --tracks trio
 
 echo "Unconditional evaluation complete!"
 
@@ -77,7 +76,8 @@ python3 -m smdiff.cli.evaluate_trio \
     --batch_size 4 \
     --n_midis 2 \
     --mask_token_start 256 \
-    --mask_token_end 512
+    --mask_token_end 512 \
+    --tracks trio
 
 echo "Infilling evaluation complete!"
 

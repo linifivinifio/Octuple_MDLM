@@ -50,6 +50,7 @@ def main():
     parser.add_argument("--load_step", type=int, default=0, help="Checkpoint step to load (0 for best/latest)")
     parser.add_argument("--mask_token_start", type=int, default=256, help="Start token index for masking (time step)")
     parser.add_argument("--mask_token_end", type=int, default=512, help="End token index for masking (time step)")
+    parser.add_argument("--tracks", type=str, default="trio", help="Data tracks config (trio or melody)")
     args = parser.parse_args()
     
     # 1. Prepare Output Directories
@@ -75,7 +76,7 @@ def main():
         "--load_dir", args.load_dir,
         "--bars", "64",
         "--batch_size", str(args.batch_size),
-        "--tracks", "trio" # Trio tracks
+        "--tracks", args.tracks
     ]
     
     try:
@@ -109,7 +110,10 @@ def main():
     sampler.eval()
     
     # 4. Load Ground Truth Data (for metrics)
-    train_data_path = os.path.join(_REPO_ROOT, "data", "POP909_trio.npy")
+    if args.tracks == 'melody':
+        train_data_path = os.path.join(_REPO_ROOT, "data", "POP909_melody.npy")
+    else:
+        train_data_path = os.path.join(_REPO_ROOT, "data", "POP909_trio.npy")
     train_samples = load_trio_dataset(train_data_path)
     
     generated_samples = []
@@ -138,7 +142,7 @@ def main():
         log("Saving samples...")
         # Note: save_generated_samples expects tokenizer_id argument (e.g., "trio_octuple" or "trio"?)
         # For now we use "trio" (assuming it maps to Trio converter in log_utils logic if present, or just generic)
-        save_generated_samples(np.array(generated_samples), "trio", samples_dir, prefix="uncond")
+        save_generated_samples(np.array(generated_samples), args.tracks, samples_dir, prefix="uncond")
         
         # Calculate Metrics
         log("Calculating metrics...")
@@ -212,7 +216,7 @@ def main():
                 original_samples_for_metrics.extend([original_tokens] * batch_size)
                 
                 mid_name = os.path.splitext(os.path.basename(midi_path))[0]
-                save_generated_samples(samples, "trio", samples_dir, prefix=f"infill_{mid_name}")
+                save_generated_samples(samples, args.tracks, samples_dir, prefix=f"infill_{mid_name}")
                 
                 count += 1
                 

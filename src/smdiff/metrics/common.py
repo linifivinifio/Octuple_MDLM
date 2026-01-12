@@ -416,9 +416,13 @@ def compute_trio_sample_diversity(samples):
     return np.mean(distances) if distances else 0.0
 
 def compute_trio_self_similarity(sample, window_steps=64):
-    # sample: (T, 3)
+    # sample: (T, 3) or (T,)
     s = np.asarray(sample)
-    if s.ndim != 2: # Should be (1024, 3)
+    if s.ndim == 1:
+        # Handle 1D melody
+        pass
+    elif s.ndim != 2: 
+        # Should be (T, C) or (T,)
         return 0.0
         
     n_steps = s.shape[0]
