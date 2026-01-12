@@ -52,7 +52,7 @@ echo "========================================"
 # Use when: You want fresh samples with specific sampling parameters
 echo ""
 echo "Running unconditional evaluation (generating new samples)..."
-python evaluate_trio.py \
+python3 -m smdiff.cli.evaluate_trio \
     --task uncond \
     --model $MODEL_ID \
     --load_dir $RUN_DIR \
@@ -69,7 +69,7 @@ echo "Unconditional evaluation complete!"
 echo ""
 echo "Running infilling evaluation (generating conditioned samples)..."
 
-python evaluate_trio.py \
+python 3 -m smdiff.cli.evaluate_trio \
     --task infill \
     --model $MODEL_ID \
     --load_dir $RUN_DIR \
