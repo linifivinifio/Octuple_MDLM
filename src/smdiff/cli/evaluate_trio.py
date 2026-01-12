@@ -187,7 +187,6 @@ def main():
         for midi_path in tqdm(midi_files, desc="Infilling"):
             try:
                 ns = midi_file_to_note_sequence(midi_path)
-                log(ns)
                 tensors = converter.to_tensors(ns)
                 if not tensors.outputs:
                     log("No tensor output!")
