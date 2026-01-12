@@ -7,11 +7,14 @@ from .common import (
     compute_self_similarity,
     compute_pitch_range,
     compute_sample_diversity,
-    is_valid_sample
+    is_valid_octuple_sample,
+    extract_trio_durations,
+    compute_trio_sample_diversity,
+    is_valid_trio_sample
 )
 
 
-def evaluate_infilling(generated_samples, original_samples, mask_start_step, mask_end_step):
+def evaluate_infilling(generated_samples, original_samples, mask_start_step, mask_end_step, is_octuple=True):
     """
     Evaluate infilling quality with reconstruction and boundary metrics using token index masking.
     
@@ -20,6 +23,7 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
         original_samples: List of (T, C) original ground truth arrays
         mask_start_step: Start token index of masked region
         mask_end_step: End token index of masked region
+        is_octuple: Whether to use Octuple-specific metrics (default True)
         
     Returns:
         Dictionary of metrics
@@ -46,6 +50,116 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
     gen_masked = [extract_region(s) for s in generated_samples]
     orig_masked = [extract_region(s) for s in original_samples]
     
+    if not is_octuple:
+        # TRIO Metrics
+        # 1. Reconstruction (Token Accuracy is Proxy for all)
+        token_results = []
+        for gen, orig in zip(gen_masked, orig_masked):
+            if len(gen) > 0 and len(orig) > 0:
+                l = min(len(gen), len(orig))
+                matches = (gen[:l] == orig[:l]).sum()
+                token_results.append(100.0 * matches / gen[:l].size)
+        
+        metrics['token_accuracy'] = np.mean(token_results) if token_results else 0.0
+        metrics['pitch_accuracy'] = metrics['token_accuracy'] 
+        
+        # Duration Accuracy via extracted durations
+        dur_diffs = [] # Absolute difference in total duration
+        
+        for gen, orig in zip(gen_masked, orig_masked):
+             d_gen_list = extract_trio_durations([gen])
+             d_orig_list = extract_trio_durations([orig])
+             
+             total_gen = np.sum(d_gen_list) if len(d_gen_list) > 0 else 0
+             total_orig = np.sum(d_orig_list) if len(d_orig_list) > 0 else 0
+             
+             dur_diffs.append(abs(total_gen - total_orig))
+             
+        metrics['infilled_duration_total_error'] = np.mean(dur_diffs) if dur_diffs else None
+        metrics['duration_accuracy'] = None
+
+        # 2. PCH KL
+        MIN_PITCH = 21 # from data.py
+        def decode_pitches_flat(samples):
+            out = []
+            for s in samples:
+                flat = s.flatten()
+                valid = flat[flat >= 2]
+                out.append(valid - 2 + MIN_PITCH)
+            return out
+
+        if gen_masked and orig_masked:
+             g_p = decode_pitches_flat(gen_masked)
+             o_p = decode_pitches_flat(orig_masked)
+             # pitch_idx=0 with 1D lists works in common.pitch_class_histogram
+             gp_hist = pitch_class_histogram(g_p, pitch_idx=0)
+             op_hist = pitch_class_histogram(o_p, pitch_idx=0)
+             metrics['infilled_pch_kl'] = kl_divergence(op_hist, gp_hist)
+        else:
+             metrics['infilled_pch_kl'] = None
+
+        # 3. Count Error (Note On events >= 2)
+        gen_counts = [np.sum(g >= 2) for g in gen_masked]
+        orig_counts = [np.sum(o >= 2) for o in orig_masked]
+        count_errors = [abs(g - o) for g, o in zip(gen_counts, orig_counts)]
+        metrics['infilled_count_error'] = np.mean(count_errors) if count_errors else 0.0
+
+        # 4. Boundary Smoothness (Pitch)
+        # Scan tracks separately
+        pitch_smoothness = []
+        for gen_full in generated_samples:
+            if mask_start_step >= len(gen_full) or mask_start_step == 0:
+                continue
+            # For each track (column)
+            for trk in range(gen_full.shape[1]):
+                 track_data = gen_full[:, trk]
+                 # Look back from mask_start
+                 prev_idx = -1
+                 for i in range(mask_start_step - 1, -1, -1):
+                     if track_data[i] >= 2:
+                         prev_idx = i
+                         break
+                 # Look forward from mask_start
+                 curr_idx = -1
+                 for i in range(mask_start_step, len(track_data)):
+                     if track_data[i] >= 2:
+                         curr_idx = i
+                         break
+                 if prev_idx != -1 and curr_idx != -1:
+                      p_prev = track_data[prev_idx] - 2 + MIN_PITCH
+                      p_curr = track_data[curr_idx] - 2 + MIN_PITCH
+                      pitch_smoothness.append(abs(p_curr - p_prev))
+        
+        metrics['boundary_pitch_smoothness'] = np.mean(pitch_smoothness) if pitch_smoothness else None
+        metrics['boundary_rhythm_smoothness'] = None
+        metrics['boundary_matches_pct'] = None 
+
+        # General Metrics for Trio
+        if generated_samples:
+            metrics['sample_diversity'] = compute_trio_sample_diversity(generated_samples)
+            v_count = sum([is_valid_trio_sample(s) for s in generated_samples])
+            metrics['valid_samples_pct'] = 100.0 * v_count / len(generated_samples)
+            
+            # Pitch Range Mean (already calculated partially? We did p_ranges above for metrics?)
+            # No, p_ranges was for uncond. For infill we can re-calc.
+            # Reuse logic:
+            ranges = []
+            for s in generated_samples:
+                 s = np.asarray(s).flatten()
+                 valid = s[s >= 2]
+                 if len(valid) > 0:
+                     val_p = valid - 2 + MIN_PITCH
+                     ranges.append(val_p.max() - val_p.min())
+                 else:
+                     ranges.append(0)
+            metrics['pitch_range_mean'] = np.mean(ranges) if ranges else 0.0
+        else:
+            metrics['sample_diversity'] = 0.0
+            metrics['valid_samples_pct'] = 0.0
+            metrics['pitch_range_mean'] = 0.0
+
+        return metrics
+
     # Reconstruction accuracy metrics (in masked region)
     pitch_accs = []
     duration_accs = []
@@ -78,6 +192,7 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
     metrics['pitch_accuracy'] = np.mean(pitch_accs) if pitch_accs else 0.0
     metrics['duration_accuracy'] = np.mean(duration_accs) if duration_accs else 0.0
     metrics['token_accuracy'] = np.mean(token_accs) if token_accs else 0.0
+    metrics['infilled_duration_total_error'] = None # Not implemented for Octuple yet
     
     # Musical quality in masked region
     # Filter out empty arrays for histogram calculation
@@ -152,7 +267,7 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
                                                              pitch_idx=pitch_idx, 
                                                              duration_idx=duration_idx)
         
-        valid_count = sum([is_valid_sample(s, 
+        valid_count = sum([is_valid_octuple_sample(s, 
                                           pitch_idx=pitch_idx, 
                                           duration_idx=duration_idx) for s in generated_samples])
         metrics['valid_samples_pct'] = 100.0 * valid_count / len(generated_samples)

@@ -10,7 +10,7 @@ from .common import (
     compute_self_similarity,
     compute_pitch_range,
     compute_sample_diversity,
-    is_valid_sample
+    is_valid_octuple_sample
 )
 
 __all__ = [
@@ -24,5 +24,5 @@ __all__ = [
     'compute_self_similarity',
     'compute_pitch_range',
     'compute_sample_diversity',
-    'is_valid_sample',
+    'is_valid_octuple_sample',
 ]

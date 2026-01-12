@@ -9,7 +9,11 @@ from .common import (
     compute_self_similarity,
     compute_pitch_range,
     compute_sample_diversity,
-    is_valid_sample
+    is_valid_octuple_sample,
+    extract_trio_durations,
+    compute_trio_self_similarity,
+    compute_trio_sample_diversity,
+    is_valid_trio_sample
 )
 
 
@@ -41,6 +45,115 @@ def evaluate_unconditional(generated_samples, train_samples, is_octuple=True):
     if not isinstance(train_samples, list):
          train_samples = [s for s in train_samples]
 
+    if not is_octuple:
+        # TRIO / Melody Encoding Logic (Pitch Only)
+        # Tokens are 0 (No Event), 1 (Note Off), 2+ (Pitch + 21 - 2)
+        MIN_PITCH = 21
+
+        def decode_pitches(samples):
+            decoded_list = []
+            for s in samples:
+                # s: (T, 3) or (T, 1) or flat
+                flat = np.asarray(s).flatten()
+                # Filter valid Note Ons (>= 2)
+                valid = flat[flat >= 2]
+                pitches = valid - 2 + MIN_PITCH
+                decoded_list.append(pitches)
+            return decoded_list
+
+        gen_pitches = decode_pitches(generated_samples)
+        train_pitches = decode_pitches(train_samples)
+
+        # Pitch Class Histogram
+        # Note: pitch_class_histogram handles 1D arrays by flattening, so pitch_idx is ignored
+        gen_pch = pitch_class_histogram(gen_pitches, pitch_idx=0)
+        train_pch = pitch_class_histogram(train_pitches, pitch_idx=0)
+        metrics['pch_kl'] = kl_divergence(train_pch, gen_pch)
+
+        # Pitch Range (Mean/Std)
+        # compute_pitch_range expects (T, C) and slices [:, pitch_idx]
+        # We can implement simpler version here or trick it
+        p_ranges = []
+        for p_arr in gen_pitches:
+            if len(p_arr) > 0:
+                p_ranges.append(p_arr.max() - p_arr.min())
+            else:
+                p_ranges.append(0)
+        
+        metrics['pitch_range_mean'] = np.mean(p_ranges) if p_ranges else 0.0
+        metrics['pitch_range_std'] = np.std(p_ranges) if p_ranges else 0.0
+
+        # Note Density (Approximate: Note On events per 16 steps)
+        # Assume 1024 steps, 64 bars -> 16 steps/bar
+        def compute_density(samples_raw):
+            densities = []
+            steps_per_bar = 16
+            for s in samples_raw:
+                # s: (1024, 3)
+                # Reshape to (Bars, Steps, Tracks) -> (64, 16, 3)
+                # Count tokens >= 2
+                if len(s) == 0: continue
+                # Handle varying lengths if any
+                n_bars = len(s) // steps_per_bar
+                if n_bars == 0: continue
+                
+                s_trunc = s[:n_bars*steps_per_bar]
+                s_reshaped = s_trunc.reshape(n_bars, steps_per_bar, -1)
+                
+                # Count >= 2 per bar
+                notes_per_bar = np.sum(s_reshaped >= 2, axis=(1, 2))
+                densities.extend(notes_per_bar)
+            return np.array(densities)
+
+        gen_density = compute_density(generated_samples)
+        train_density = compute_density(train_samples)
+        
+        max_d = int(max(gen_density.max(), train_density.max()) + 1) if (len(gen_density) > 0 and len(train_density) > 0) else 1
+        gen_d_hist = np.bincount(gen_density.astype(int), minlength=max_d)
+        train_d_hist = np.bincount(train_density.astype(int), minlength=max_d)
+        metrics['note_density_kl'] = kl_divergence(train_d_hist, gen_d_hist)
+
+        # Duration KL (Explicitly extracted from grid)
+        gen_durs = extract_trio_durations(generated_samples)
+        train_durs = extract_trio_durations(train_samples)
+        
+        # Clip to reasonable max bins (e.g. 128 = 8 bars) for histogram
+        MAX_DUR = 128
+        gen_durs = gen_durs[gen_durs < MAX_DUR]
+        train_durs = train_durs[train_durs < MAX_DUR]
+        
+        if len(gen_durs) > 0 and len(train_durs) > 0:
+             # Make histograms
+             d_max = max(gen_durs.max(), train_durs.max()) + 1
+             hist_g = np.bincount(gen_durs, minlength=d_max)
+             hist_t = np.bincount(train_durs, minlength=d_max)
+             metrics['duration_kl'] = kl_divergence(hist_t, hist_g)
+        else:
+             metrics['duration_kl'] = None
+
+        # Duration Stats
+        if len(gen_durs) > 0:
+            metrics['duration_mean'] = np.mean(gen_durs)
+            metrics['duration_std'] = np.std(gen_durs)
+        else:
+            metrics['duration_mean'] = None
+            metrics['duration_std'] = None
+
+        # Diversity
+        metrics['sample_diversity'] = compute_trio_sample_diversity(generated_samples)
+        
+        # Validity
+        v_count = sum([is_valid_trio_sample(s) for s in generated_samples])
+        metrics['valid_samples_pct'] = 100.0 * v_count / len(generated_samples) if len(generated_samples) > 0 else None
+
+        # Self Sim
+        ss = [compute_trio_self_similarity(s) for s in generated_samples]
+        metrics['self_similarity'] = np.mean(ss) if ss else None
+        metrics['self_similarity_std'] = np.std(ss) if ss else None
+        
+        return metrics
+
+    # OCTUPLE LOGIC (Original)
     gen_pch = pitch_class_histogram(generated_samples, pitch_idx=pitch_idx)
     train_pch = pitch_class_histogram(train_samples, pitch_idx=pitch_idx)
     metrics['pch_kl'] = kl_divergence(train_pch, gen_pch)
@@ -80,11 +193,11 @@ def evaluate_unconditional(generated_samples, train_samples, is_octuple=True):
         self_sims.append(compute_self_similarity(sample, pitch_idx=pitch_idx, duration_idx=duration_idx))
         pitch_ranges.append(compute_pitch_range(sample, pitch_idx=pitch_idx))
     
-    metrics['self_similarity'] = np.mean(self_sims) if self_sims else 0.0
-    metrics['self_similarity_std'] = np.std(self_sims) if self_sims else 0.0
+    metrics['self_similarity'] = np.mean(self_sims) if self_sims else None
+    metrics['self_similarity_std'] = np.std(self_sims) if self_sims else None
     
-    metrics['pitch_range_mean'] = np.mean(pitch_ranges) if pitch_ranges else 0.0
-    metrics['pitch_range_std'] = np.std(pitch_ranges) if pitch_ranges else 0.0
+    metrics['pitch_range_mean'] = np.mean(pitch_ranges) if pitch_ranges else None
+    metrics['pitch_range_std'] = np.std(pitch_ranges) if pitch_ranges else None
     
     # Diversity metric
     metrics['sample_diversity'] = compute_sample_diversity(generated_samples, 
@@ -92,9 +205,9 @@ def evaluate_unconditional(generated_samples, train_samples, is_octuple=True):
                                                          duration_idx=duration_idx)
     
     # Validity metric
-    valid_count = sum([is_valid_sample(s, 
+    valid_count = sum([is_valid_octuple_sample(s, 
                                       pitch_idx=pitch_idx, 
                                       duration_idx=duration_idx) for s in generated_samples])
-    metrics['valid_samples_pct'] = 100.0 * valid_count / len(generated_samples) if len(generated_samples) > 0 else 0.0
+    metrics['valid_samples_pct'] = 100.0 * valid_count / len(generated_samples) if len(generated_samples) > 0 else None
     
     return metrics

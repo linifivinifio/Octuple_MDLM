@@ -29,6 +29,53 @@ def kl_divergence(p, q, epsilon=1e-10):
     return entropy(p, q)
 
 
+def extract_trio_durations(samples):
+    """
+    Extract note durations from Trio time-grid samples.
+    Args:
+        samples: List of (T, 3) or (T,) arrays. or (B, T, 3)
+    Returns:
+        List of duration values (integers).
+    """
+    all_durations = []
+    
+    # Standardize input to list of arrays
+    if not isinstance(samples, list):
+         if hasattr(samples, 'ndim') and samples.ndim == 3:
+             samples = [s for s in samples]
+         else:
+             samples = [samples]
+
+    for s in samples:
+        s = np.asarray(s)
+        if s.ndim == 1:
+            # Handle single track
+            tracks = [s]
+        else:
+            # Handle 3 tracks (or N tracks)
+            tracks = [s[:, i] for i in range(s.shape[1])]
+            
+        for track in tracks:
+            # Iterate through time steps
+            N = len(track)
+            i = 0
+            while i < N:
+                token = track[i]
+                if token >= 2: # Note On
+                    dur = 1
+                    j = i + 1
+                    while j < N:
+                        if track[j] == 0: # Sustain
+                            dur += 1
+                            j += 1
+                        else: # Note Off (1) or New Note (>=2)
+                            break
+                    all_durations.append(dur)
+                i += 1
+    return np.array(all_durations)
+
+
+
 def pitch_class_histogram(tokens, pitch_idx=2):
     """
     Compute pitch class histogram (C, C#, D, ..., B).
@@ -320,8 +367,102 @@ def compute_sample_diversity(tokens_list, pitch_idx=2, duration_idx=3):
     return np.mean(distances) if distances else 0.0
 
 
+def is_valid_trio_sample(s, max_token=89):
+    # s is (T, 3) or (T,)
+    s = np.asarray(s)
+    # Check bounds
+    if np.any(s < 0) or np.any(s > max_token):
+        return False
+    return True
 
-def is_valid_sample(tokens, max_pitch=127, max_duration=255, pitch_idx=2, duration_idx=3):
+def compute_trio_sample_diversity(samples):
+    if len(samples) < 2:
+        return 0.0
+    
+    features = []
+    for s in samples:
+        s = np.asarray(s)
+        # Flatten and filter for Note Ons (>=2)
+        flat = s.flatten()
+        valid = flat[flat >= 2]
+        
+        # Mapping to pitch class (0-11)
+        # Token 2 -> Pitch 21. 21 % 12 = 9.
+        # Token n -> Pitch n - 2 + 21.
+        # Pitch Class = (n - 2 + 21) % 12 = (n + 19) % 12 = (n + 7) % 12
+        pitch_classes = (valid + 7) % 12
+        
+        # Feature: Normalized PCH
+        pch = np.bincount(pitch_classes.astype(int), minlength=12)
+        # Normalize
+        norm = np.linalg.norm(pch) 
+        if norm > 0:
+            pch = pch / norm
+            
+        features.append(pch)
+    
+    features = np.array(features)
+    
+    # Calculate pairwise distances
+    distances = []
+    n = len(features)
+    # Subsampling if too many for n^2? 
+    # If n > 100, maybe sample? common.py doesn't, so we won't.
+    for i in range(n):
+        for j in range(i + 1, n):
+            dist = np.linalg.norm(features[i] - features[j])
+            distances.append(dist)
+            
+    return np.mean(distances) if distances else 0.0
+
+def compute_trio_self_similarity(sample, window_steps=64):
+    # sample: (T, 3)
+    s = np.asarray(sample)
+    if s.ndim != 2: # Should be (1024, 3)
+        return 0.0
+        
+    n_steps = s.shape[0]
+    num_windows = n_steps // window_steps
+    
+    if num_windows < 2:
+        return 0.0
+        
+    windows = []
+    for i in range(num_windows):
+        start = i * window_steps
+        end = start + window_steps
+        win_data = s[start:end] # (64, 3)
+        
+        flat = win_data.flatten()
+        valid = flat[flat >= 2]
+        pitch_classes = (valid + 7) % 12
+        pch = np.bincount(pitch_classes.astype(int), minlength=12)
+        
+        windows.append(pch)
+        
+    similarities = []
+    for i in range(len(windows) - 1):
+        v1 = windows[i]
+        v2 = windows[i+1]
+        
+        norm1 = np.linalg.norm(v1)
+        norm2 = np.linalg.norm(v2)
+        
+        if norm1 > 0 and norm2 > 0:
+            sim = np.dot(v1, v2) / (norm1 * norm2)
+            similarities.append(sim)
+        else:
+             # if one window is empty (silence), sim is 0? or 1 if both empty?
+             # If both empty, they are similar (silence==silence).
+             if norm1 == 0 and norm2 == 0:
+                 similarities.append(1.0)
+             else:
+                 similarities.append(0.0)
+                 
+    return np.mean(similarities) if similarities else 0.0
+
+
+def is_valid_octuple_sample(tokens, max_pitch=127, max_duration=255, pitch_idx=2, duration_idx=3):
     """
     Check if a sample is valid (decodable to MIDI).
     
