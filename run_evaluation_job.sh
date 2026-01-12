@@ -27,7 +27,7 @@ python -c "import torch; print('Torch:', torch.__version__, 'CUDA:', torch.cuda.
 
 # Configuration
 MODEL_ID="schmu_tx_vae"
-RUN_DIR="runs/schmu_conv_vae_trio"  # Update to your actual run directory
+RUN_DIR="runs/schmu_tx_vae_trio"  # Update to your actual run directory
 
 # Mini smoke-test sizes (fast). Increase once the job works end-to-end.
 N_SAMPLES_UNCOND=8
