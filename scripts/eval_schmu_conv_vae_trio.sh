@@ -17,7 +17,7 @@ mkdir -p logs
 nvidia-smi || true
 
 MODEL_ID="schmu_conv_vae"
-RUN_DIR="runs/schmu_conv_vae"
+RUN_DIR="runs/schmu_conv_vae_trio"
 
 # Infilling: 50 MIDI files × 2 regions = 100 samples
 INFILL_MIDI_DIR="data/test/POP909"
