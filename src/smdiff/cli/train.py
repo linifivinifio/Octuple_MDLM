@@ -101,7 +101,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--bars", type=int, default=None)
     parser.add_argument("--tracks", type=str, default=None)
-    parser.add_argument("--monotonicity_loss", type=bool, action="store_true", default=False)
+    parser.add_argument("--monotonicity_loss", action="store_true", default=False)
 
     # Frequency/logging settings (kept compatible)
     parser.add_argument("--steps_per_eval", type=int, default=None)
