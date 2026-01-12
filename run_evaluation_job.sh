@@ -69,7 +69,7 @@ echo "Unconditional evaluation complete!"
 echo ""
 echo "Running infilling evaluation (generating conditioned samples)..."
 
-python 3 -m smdiff.cli.evaluate_trio \
+python3 -m smdiff.cli.evaluate_trio \
     --task infill \
     --model $MODEL_ID \
     --load_dir $RUN_DIR \
