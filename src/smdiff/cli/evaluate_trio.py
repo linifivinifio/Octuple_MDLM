@@ -24,6 +24,7 @@ from smdiff.metrics.infilling import evaluate_infilling
 from smdiff.preprocessing.data import POP909TrioConverter
 from note_seq import midi_file_to_note_sequence
 from smdiff.cluster import get_scratch_dir
+from smdiff.registry import resolve_model_id
 
 def load_trio_dataset(path):
     log(f"Loading dataset from {path}...")
@@ -63,12 +64,14 @@ def main():
 
     model_id = args.model
     log(f"Using Model ID: {model_id}")
+    
+    model = resolve_model_id(model_id)
 
     # Set up H
     prev_argv = sys.argv
     sys.argv = [
         sys.argv[0],
-        "--model", model_id,
+        "--model", model.internal_model,
         "--load_dir", args.load_dir,
         "--bars", "64",
         "--batch_size", str(args.batch_size),
@@ -84,6 +87,7 @@ def main():
         sys.argv = prev_argv
 
     H.load_dir = args.load_dir 
+    H.model_id = model_id
     
     # 2. Load Model
     log("Loading model...")
