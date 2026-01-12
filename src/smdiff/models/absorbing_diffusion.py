@@ -11,6 +11,7 @@ class AbsorbingDiffusion(Sampler):
     def __init__(self, H, denoise_fn, mask_id):
         super().__init__(H)
         self.seed = H.seed
+        self.monotonicity_loss = H.monotonicity_loss
         self.num_classes = H.codebook_size
         self.latent_emb_dim = H.emb_dim
         self.shape = tuple(H.latent_shape)
@@ -270,10 +271,45 @@ class AbsorbingDiffusion(Sampler):
         x_0_hat_logits = self._denoise_fn(x_t)
         x_0_hat_logits = [el.permute(0, 2, 1) for el in x_0_hat_logits]
 
-        # Always compute ELBO for comparison purposes
+        # --- ENHANCEMENT: Structure Awareness & Channel Weighting ---
+        # Detect Octuple encoding (8 channels)
+        is_octuple = (len(x_0_hat_logits) == 8)
+        
         cross_entropy_loss = [F.cross_entropy(x, x_0_ignore[:, :, i], ignore_index=-1, reduction='none').sum(1)
                               for i, x in enumerate(x_0_hat_logits)]
         cross_entropy_loss = torch.stack(cross_entropy_loss).sum(0)
+
+        # --- ENHANCEMENT: Monotonicity Loss (Bar & Position) ---
+        aux_loss = 0.0
+        if is_octuple and self.monotonicity_loss:
+            # Channel 0 is Bar, Channel 1 is Position.
+            # We construct a "Global Time" value = Bar * MaxPos + Pos
+            # And enforce that this Global Time is non-decreasing.
+            
+            bar_logits = x_0_hat_logits[0] # (B, V_bar, T)
+            pos_logits = x_0_hat_logits[1] # (B, V_pos, T)
+            
+            # Soft Argmax for Bar
+            probs_bar = F.softmax(bar_logits, dim=1) 
+            indices_bar = torch.arange(probs_bar.shape[1], device=device).float().view(1, -1, 1)
+            expected_bar = (probs_bar * indices_bar).sum(1) # (B, T)
+            
+            # Soft Argmax for Position
+            probs_pos = F.softmax(pos_logits, dim=1)
+            indices_pos = torch.arange(probs_pos.shape[1], device=device).float().view(1, -1, 1)
+            expected_pos = (probs_pos * indices_pos).sum(1) # (B, T)
+            
+            # Global Time Construction
+            # We assume MaxPos (resolution) is at most 200 (usually 128 or 256 depending on config)
+            # This ensures that Bar + 1 > Bar + Pos_Max
+            SCALE_FACTOR = 200.0
+            expected_global = expected_bar * SCALE_FACTOR + expected_pos
+            
+            # Penalize: global[t] - global[t+1] > 0
+            diff = expected_global[:, :-1] - expected_global[:, 1:]
+            mono_loss = F.relu(diff).sum(1)
+            
+            aux_loss = mono_loss * 2.0
 
         vb_loss = cross_entropy_loss / t
         vb_loss = vb_loss / pt
@@ -291,6 +327,9 @@ class AbsorbingDiffusion(Sampler):
             loss = loss / (math.log(2) * x_0.shape[1:].numel())
         else:
             raise ValueError
+
+        # Add Auxiliary Structure Losses
+        loss = loss + aux_loss
 
         # Track loss at each time step history for bar plot
         Lt2_prev = self.loss_history.gather(dim=0, index=t)

@@ -29,6 +29,7 @@ python3 src/smdiff/cli/train.py \
   --seed 67 \
   --wandb \
   --wandb_project "octubert-music" \
-  --wandb_name "octuple-mask-ddpm-trio-octuple-bar-attribute"
+  --wandb_name "octuple-mask-ddpm-trio-octuple-bar-attribute" # \
+#  --monotonicity_loss
 
 echo "Job finished at $(date)"

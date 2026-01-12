@@ -73,6 +73,8 @@ def build_underlying_argv(cfg: Dict, ns: argparse.Namespace) -> List[str]:
         args += ["--masking_strategy", pick("masking_strategy")]
     if pick("seed"):
         args += ["--seed", str(pick("seed"))]
+    if pick("monotonicity_loss"):
+        args += ["--monotonicity_loss", str(pick("monotonicity_loss"))]
 
     return args
 
@@ -99,6 +101,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--bars", type=int, default=None)
     parser.add_argument("--tracks", type=str, default=None)
+    parser.add_argument("--monotonicity_loss", type=bool, action="store_true", default=False)
 
     # Frequency/logging settings (kept compatible)
     parser.add_argument("--steps_per_eval", type=int, default=None)

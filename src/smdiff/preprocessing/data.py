@@ -1064,9 +1064,10 @@ class POP909OctupleMelodyConverter(BaseNoteSequenceConverter):
     # Set Instrument ID 0
     full_song[:, 2] = 0
     
-    # Sort
-    full_song = full_song[np.argsort(full_song[:, 0])]
+    # Sort (Primary: Bar (0), Secondary: Position (1))
+    # Using stable sort: separate argsorts must be done Secondary first, then Primary.
     full_song = full_song[np.argsort(full_song[:, 1], kind='stable')]
+    full_song = full_song[np.argsort(full_song[:, 0], kind='stable')]
 
     # 3. Deterministic Slicing with Stride
     max_bar = full_song[:, 0].max()
@@ -1225,8 +1226,9 @@ class POP909OctupleTrioConverter(BaseNoteSequenceConverter):
     # 3. Merge into one giant sorted array
     full_song = np.vstack(track_encodings)
     # Sort by Bar (col 0), then Position (col 1)
-    full_song = full_song[np.argsort(full_song[:, 0])]
+    # Using stable sort: Secondary key (Position) first, then Primary key (Bar)
     full_song = full_song[np.argsort(full_song[:, 1], kind='stable')]
+    full_song = full_song[np.argsort(full_song[:, 0], kind='stable')]
 
     # 4. Deterministic Slicing with Stride
     max_bar = full_song[:, 0].max()
