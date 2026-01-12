@@ -183,7 +183,8 @@ def main():
             
         log(f"Found {len(midi_files)} MIDI files (limit: {args.n_midis}).")
         
-        converter = POP909OctupleTrioConverter(slice_bars=64) # Ensure max length covers needed range
+        converter = POP909OctupleTrioConverter(slice_bars=64, presplit_on_time_changes=False,
+            strict_tempo=False, gap_bars=None) # Ensure max length covers needed range
         
         # Token-based masking
         mask_token_start = args.mask_token_start

@@ -167,9 +167,9 @@ def main():
         log(f"Found {len(midi_files)} MIDI files.")
         
         if args.tracks == 'melody':
-             converter = OneHotMelodyConverter(slice_bars=64, gap_bars=None, presplit_on_time_changes=False)
+             converter = OneHotMelodyConverter(slice_bars=64, gap_bars=None, presplit_on_time_changes=False, strict_tempo=False, instrument=0)
         else:
-             converter = POP909TrioConverter(max_bars=64, slice_bars=64, gap_bars=None, presplit_on_time_changes=False)
+             converter = POP909TrioConverter(max_bars=64, slice_bars=64, gap_bars=None, presplit_on_time_changes=False, strict_tempo=False)
         
         mask_token_start = args.mask_token_start
         mask_token_end = args.mask_token_end
