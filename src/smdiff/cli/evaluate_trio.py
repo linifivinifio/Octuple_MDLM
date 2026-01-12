@@ -169,7 +169,7 @@ def main():
         if args.tracks == 'melody':
              converter = OneHotMelodyConverter(slice_bars=64, gap_bars=None, presplit_on_time_changes=False, strict_tempo=False, instrument=0)
         else:
-             converter = POP909TrioConverter(max_bars=64, slice_bars=64, gap_bars=None, presplit_on_time_changes=False, strict_tempo=False)
+             converter = POP909TrioConverter(max_bars=1024, slice_bars=64, gap_bars=None, presplit_on_time_changes=False, strict_tempo=False)
         
         mask_token_start = args.mask_token_start
         mask_token_end = args.mask_token_end
