@@ -21,7 +21,7 @@ from smdiff.utils.sampler_utils import get_sampler, save_generated_samples
 from smdiff.utils.log_utils import load_model, config_log, log
 from smdiff.metrics.unconditional import evaluate_unconditional
 from smdiff.metrics.infilling import evaluate_infilling
-from smdiff.preprocessing.data import POP909TrioConverter
+from smdiff.preprocessing.data import POP909TrioConverter, OneHotMelodyConverter
 from note_seq import midi_file_to_note_sequence
 from smdiff.cluster import get_scratch_dir
 from smdiff.registry import resolve_model_id
@@ -166,7 +166,10 @@ def main():
             
         log(f"Found {len(midi_files)} MIDI files.")
         
-        converter = POP909TrioConverter(max_bars=64, slice_bars=64) # Trio config
+        if args.tracks == 'melody':
+             converter = OneHotMelodyConverter(slice_bars=64, gap_bars=None, presplit_on_time_changes=False)
+        else:
+             converter = POP909TrioConverter(max_bars=64, slice_bars=64, gap_bars=None, presplit_on_time_changes=False)
         
         mask_token_start = args.mask_token_start
         mask_token_end = args.mask_token_end
@@ -187,11 +190,20 @@ def main():
                 tensors = converter.to_tensors(ns)
                 if not tensors.outputs:
                     continue
+
+                original_tokens = tensors.outputs[0]
                 
-                original_tokens = tensors.outputs[0] 
-                
-                if original_tokens.ndim != 2 or original_tokens.shape[1] < 3:
-                    continue
+                # Check dimensions based on track type
+                if args.tracks == 'melody':
+                     # Expect (T, 1) or (T,)
+                     # OneHotMelodyConverter returns (T, 1) usually.
+                     if original_tokens.ndim == 2 and original_tokens.shape[1] == 1:
+                         pass
+                     elif original_tokens.ndim == 1:
+                         pass # OK
+                else:
+                    if original_tokens.ndim != 2 or original_tokens.shape[1] < 3:
+                        continue
                 
                 if len(original_tokens) > H.NOTES:
                      original_tokens = original_tokens[:H.NOTES]

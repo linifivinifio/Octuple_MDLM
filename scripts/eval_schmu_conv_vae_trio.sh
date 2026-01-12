@@ -28,12 +28,12 @@ echo "Model:   ${MODEL_ID}"
 echo "Run dir: ${RUN_DIR}"
 echo "========================================"
 
-python3 -m smdiff.cli.evaluate_trio \
-  --task uncond \
-  --model "${MODEL_ID}" \
-  --load_dir "${RUN_DIR}" \
-  --batch_size 4 \
-  --tracks trio
+# python3 -m smdiff.cli.evaluate_trio \
+#   --task uncond \
+#   --model "${MODEL_ID}" \
+#   --load_dir "${RUN_DIR}" \
+#   --batch_size 4 \
+#   --tracks trio
 
 echo "========================================"
 echo "Infilling evaluation"

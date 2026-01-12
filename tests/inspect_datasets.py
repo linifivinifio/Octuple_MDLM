@@ -6,7 +6,8 @@ files = [
     "data/POP909_trio_octuple.npy", 
     "data/POP909_trio.npy",
     "data/POP909_melody.npy",
-    "data/POP909_melody_octuple.npy"
+    "data/POP909_melody_octuple.npy",
+    "data/test.npy"
 ]
 
 for f in files:
