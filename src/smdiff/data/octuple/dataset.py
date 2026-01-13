@@ -41,9 +41,25 @@ class OctupleDataset(torch.utils.data.Dataset):
             padding = np.zeros((self.seq_len - data.shape[0], data.shape[1]), dtype=data.dtype)
             data = np.concatenate([data, padding], axis=0)
         
-        # Random crop
+        # Aligned Random Crop
+        # We only want to start at the beginning of a bar (Position == 0)
+        # to preserve absolute positional embedding alignment.
         if data.shape[0] > self.seq_len:
-            start = np.random.randint(0, data.shape[0] - self.seq_len)
+            # Find all indices where Position (col 1) == 0
+            # and that allow for a full sequence length crop
+            max_start = data.shape[0] - self.seq_len
+            
+            # Get boolean mask of valid positions (Position == 0)
+            valid_starts_mask = (data[:max_start + 1, 1] == 0)
+            valid_start_indices = np.where(valid_starts_mask)[0]
+            
+            if len(valid_start_indices) > 0:
+                start = np.random.choice(valid_start_indices)
+            else:
+                # Fallback: strict alignment not possible (e.g. no bar starts in valid range)
+                # This should be rare for valid MIDI. Use standard random crop.
+                start = np.random.randint(0, max_start + 1)
+                
             data = data[start:start+self.seq_len]
 
         # Normalize bar numbers (column 0) to start from 0
