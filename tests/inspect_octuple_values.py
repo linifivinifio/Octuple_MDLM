@@ -70,7 +70,7 @@ try:
     plt.grid(True)
     
     os.makedirs("plots", exist_ok=True)
-    plt.savefig("plots/single_sample_structure.png")
+    plt.savefig("plots/single_sample_structure_new_data_and_loss.png")
     print("Saved plots/single_sample_structure.png")
     
 except Exception as e:

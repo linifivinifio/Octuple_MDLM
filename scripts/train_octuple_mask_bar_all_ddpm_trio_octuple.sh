@@ -5,7 +5,7 @@
 #SBATCH --time=16:00:00
 #SBATCH --partition=student
 #SBATCH --account=deep_learning
-#SBATCH --gpus=1
+#SBATCH --gpus=1 
 #SBATCH --mem=24G
 
 set -euo pipefail

@@ -279,37 +279,51 @@ class AbsorbingDiffusion(Sampler):
                               for i, x in enumerate(x_0_hat_logits)]
         cross_entropy_loss = torch.stack(cross_entropy_loss).sum(0)
 
-        # --- ENHANCEMENT: Monotonicity Loss (Bar & Position) ---
+# --- ENHANCEMENT: Structure Regression Loss (Bar & Position) ---
         aux_loss = 0.0
         if is_octuple and self.monotonicity_loss:
-            # Channel 0 is Bar, Channel 1 is Position.
-            # We construct a "Global Time" value = Bar * MaxPos + Pos
-            # And enforce that this Global Time is non-decreasing.
+            # SAFETY RULE: SCALE_FACTOR must be > model_vocab_size (132)
+            SCALE_FACTOR = 200.0 
             
-            bar_logits = x_0_hat_logits[0] # (B, V_bar, T)
-            pos_logits = x_0_hat_logits[1] # (B, V_pos, T)
+            # --- 1. PREPARE TARGETS (GROUND TRUTH) ---
+            # Cast to float for regression
+            target_bar = x_0[:, 0, :].float()
+            target_pos = x_0[:, 1, :].float()
             
-            # Soft Argmax for Bar
-            probs_bar = F.softmax(bar_logits, dim=1) 
+            # Construct "True Global Time"
+            target_global = target_bar * SCALE_FACTOR + target_pos
+
+            # --- 2. PREPARE PREDICTIONS (SOFT ARGMAX) ---
+            bar_logits = x_0_hat_logits[0] # (B, 132ish, T)
+            pos_logits = x_0_hat_logits[1] # (B, 132ish, T)
+            
+            # Calculate Expected Bar Index
+            probs_bar = F.softmax(bar_logits, dim=1)
             indices_bar = torch.arange(probs_bar.shape[1], device=device).float().view(1, -1, 1)
-            expected_bar = (probs_bar * indices_bar).sum(1) # (B, T)
+            expected_bar = (probs_bar * indices_bar).sum(1) 
             
-            # Soft Argmax for Position
+            # Calculate Expected Position Index
             probs_pos = F.softmax(pos_logits, dim=1)
             indices_pos = torch.arange(probs_pos.shape[1], device=device).float().view(1, -1, 1)
-            expected_pos = (probs_pos * indices_pos).sum(1) # (B, T)
+            expected_pos = (probs_pos * indices_pos).sum(1)
             
-            # Global Time Construction
-            # We assume MaxPos (resolution) is at most 200 (usually 128 or 256 depending on config)
-            # This ensures that Bar + 1 > Bar + Pos_Max
-            SCALE_FACTOR = 200.0
+            # Construct "Predicted Global Time"
             expected_global = expected_bar * SCALE_FACTOR + expected_pos
+
+            # --- 3. CALCULATE LOSS ---
+            # Use MSE to force predictions to adhere to the target diagonal
+            mse_loss = F.mse_loss(expected_global, target_global, reduction='none')
             
-            # Penalize: global[t] - global[t+1] > 0
-            diff = expected_global[:, :-1] - expected_global[:, 1:]
-            mono_loss = F.relu(diff).sum(1)
+            # Mask out padding/invalid tokens if necessary
+            # (Assuming x_0_ignore has -1 for padding)
+            valid_mask = (x_0_ignore[:, 0, :] != -1).float()
             
-            aux_loss = mono_loss * 2.0
+            # Normalize by the number of valid tokens to keep gradients stable
+            structure_loss = (mse_loss * valid_mask).sum() / (valid_mask.sum() + 1e-6)
+            
+            # --- 4. SCALING ---
+            # Scale down because global time values (e.g. 12,000) create massive MSE
+            aux_loss = structure_loss * 1e-4
 
         vb_loss = cross_entropy_loss / t
         vb_loss = vb_loss / pt
