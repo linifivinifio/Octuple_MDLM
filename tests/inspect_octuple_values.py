@@ -49,9 +49,13 @@ try:
     # Check histograms
     d_hist = duration_histogram(all_s, duration_idx=4)
     v_hist = velocity_histogram(all_s, velocity_idx=5)
-    
+    b_hist = duration_histogram(all_s, duration_idx=0, max_bins=64)
+    pos_hist = duration_histogram(all_s, duration_idx=1, max_bins=64)
+
     print(f"\nDuration Hist: {d_hist}")
     print(f"Velocity Hist: {v_hist}")
+    print(f"Bin hist: ", b_hist)
+    print(f"Pos hist: ", pos_hist)
     
     # Plot bars and positions for a single sample
     import matplotlib.pyplot as plt
@@ -70,7 +74,7 @@ try:
     plt.grid(True)
     
     os.makedirs("plots", exist_ok=True)
-    plt.savefig("plots/single_sample_structure_new_data_and_loss.png")
+    plt.savefig("plots/single_sample_structure_new_data_and_loss_musicbert.png")
     print("Saved plots/single_sample_structure.png")
     
 except Exception as e:

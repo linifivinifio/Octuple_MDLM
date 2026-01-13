@@ -56,13 +56,13 @@ class SimpleNpyDataset(torch.utils.data.Dataset):
                 x = np.pad(x, [(0, pad_len), (0, 0)], 'constant')
 
         # 4. Octuple Bar Normalization
-        if self.is_octuple and x.ndim == 2 and x.shape[1] == 8:
-            # Only run if we have data (non-padding)
-            if x.shape[0] > 0:
-                first_bar = x[0, 0]
-                if first_bar > 0:
-                    x[:, 0] -= first_bar
-                    x[:, 0] = np.maximum(x[:, 0], 0)
+        # if self.is_octuple and x.ndim == 2 and x.shape[1] == 8:
+        #     # Only run if we have data (non-padding)
+        #     if x.shape[0] > 0:
+        #         first_bar = x[0, 0]
+        #         if first_bar > 0:
+        #             x[:, 0] -= first_bar
+        #             x[:, 0] = np.maximum(x[:, 0], 0)
 
         # 5. Return as PyTorch LongTensor
         return torch.from_numpy(x).long()
