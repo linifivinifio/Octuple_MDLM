@@ -74,7 +74,7 @@ def build_underlying_argv(cfg: Dict, ns: argparse.Namespace) -> List[str]:
     if pick("seed"):
         args += ["--seed", str(pick("seed"))]
     if pick("monotonicity_loss"):
-        args += ["--monotonicity_loss", str(pick("monotonicity_loss"))]
+        args += ["--monotonicity_loss"]
 
     return args
 

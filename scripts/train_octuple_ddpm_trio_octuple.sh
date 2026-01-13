@@ -28,7 +28,7 @@ python3 src/smdiff/cli/train.py \
   --seed 67 \
   --wandb \
   --wandb_project "octubert-music" \
-  --wandb_name "octuple-ddpm-trio-octuple" # \
-#  --monotonicity_loss
+  --wandb_name "octuple-ddpm-trio-octuple" \
+  --monotonicity_loss
 
 echo "Job finished at $(date)"
