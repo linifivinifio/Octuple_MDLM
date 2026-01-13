@@ -279,50 +279,43 @@ class AbsorbingDiffusion(Sampler):
                               for i, x in enumerate(x_0_hat_logits)]
         cross_entropy_loss = torch.stack(cross_entropy_loss).sum(0)
 
-# --- ENHANCEMENT: Structure Regression Loss (Bar & Position) ---
+        # --- ENHANCEMENT: Structure Regression Loss (Bar & Position) ---
         aux_loss = 0.0
         if is_octuple and self.monotonicity_loss:
-            # SAFETY RULE: SCALE_FACTOR must be > model_vocab_size (132)
-            SCALE_FACTOR = 200.0 
+            SCALE_FACTOR = 200.0
             
-            # --- 1. PREPARE TARGETS (GROUND TRUTH) ---
-            # Cast to float for regression
-            target_bar = x_0[:, 0, :].float()
-            target_pos = x_0[:, 1, :].float()
+            # 1. PREPARE TARGETS (Ground Truth)
+            # ERROR WAS HERE: x_0 is (Batch, Time, Channels)
+            # We want all time steps (dim 1), specific channel (dim 2)
+            target_bar = x_0[:, :, 0].float()  # Shape: (B, T)
+            target_pos = x_0[:, :, 1].float()  # Shape: (B, T)
             
-            # Construct "True Global Time"
             target_global = target_bar * SCALE_FACTOR + target_pos
 
-            # --- 2. PREPARE PREDICTIONS (SOFT ARGMAX) ---
-            bar_logits = x_0_hat_logits[0] # (B, 132ish, T)
-            pos_logits = x_0_hat_logits[1] # (B, 132ish, T)
+            # 2. PREPARE PREDICTIONS (Soft Argmax)
+            # Logits are likely (B, Vocab, T) based on CrossEntropy usage
+            bar_logits = x_0_hat_logits[0] 
+            pos_logits = x_0_hat_logits[1] 
             
-            # Calculate Expected Bar Index
+            # Expected Bar
             probs_bar = F.softmax(bar_logits, dim=1)
             indices_bar = torch.arange(probs_bar.shape[1], device=device).float().view(1, -1, 1)
-            expected_bar = (probs_bar * indices_bar).sum(1) 
+            expected_bar = (probs_bar * indices_bar).sum(1) # Sum over Vocab dim -> (B, T)
             
-            # Calculate Expected Position Index
+            # Expected Position
             probs_pos = F.softmax(pos_logits, dim=1)
             indices_pos = torch.arange(probs_pos.shape[1], device=device).float().view(1, -1, 1)
             expected_pos = (probs_pos * indices_pos).sum(1)
             
-            # Construct "Predicted Global Time"
             expected_global = expected_bar * SCALE_FACTOR + expected_pos
 
-            # --- 3. CALCULATE LOSS ---
-            # Use MSE to force predictions to adhere to the target diagonal
+            # 3. CALCULATE LOSS
             mse_loss = F.mse_loss(expected_global, target_global, reduction='none')
             
-            # Mask out padding/invalid tokens if necessary
-            # (Assuming x_0_ignore has -1 for padding)
-            valid_mask = (x_0_ignore[:, 0, :] != -1).float()
+            # Correct mask slicing as well
+            valid_mask = (x_0_ignore[:, :, 0] != -1).float()
             
-            # Normalize by the number of valid tokens to keep gradients stable
             structure_loss = (mse_loss * valid_mask).sum() / (valid_mask.sum() + 1e-6)
-            
-            # --- 4. SCALING ---
-            # Scale down because global time values (e.g. 12,000) create massive MSE
             aux_loss = structure_loss * 1e-4
 
         vb_loss = cross_entropy_loss / t
