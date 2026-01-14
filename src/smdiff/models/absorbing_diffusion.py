@@ -142,6 +142,83 @@ class AbsorbingDiffusion(Sampler):
         if current_strategy == 'random':
             return self.q_sample(x_0=x_0, t=t)
 
+        if current_strategy == 'sync':            
+            # Implementation of "Synchronized Masking" for learning sequentiality.
+            # 1. Bar Token (Channel 0): Masked in large contiguous blocks (8 bars)
+            # 2. Other Tokens (Pos, Pitch, etc): Masked per-bar (all tokens of type T in Bar B)
+            
+            bar_indices = x_0[:, :, 0]
+            # Attributes to mask with "Bar-Level" strategy (everything except Bar token)
+            # Attributes: Position(1), Pitch(3), Duration(4), Velocity(5), Tempo(7)
+            # We treat Bar(0) separately.
+            target_attributes_inner = torch.tensor([1, 3, 4, 5, 7], device=device)
+            num_attrs_inner = len(target_attributes_inner)
+            
+            BAR_BLOCK_SIZE = 8
+
+            for i in range(b):
+                u_bars = torch.unique(bar_indices[i])
+                u_bars_sorted, _ = torch.sort(u_bars)
+                n_bars = len(u_bars)
+                
+                # t[i] is 1..T
+                ratio = t[i].float() / self.num_timesteps
+                
+                # --- A. Block Masking for Bar Token (Channel 0) ---
+                # We define units as "Blocks of 8 Bars"
+                num_blocks = math.ceil(n_bars / BAR_BLOCK_SIZE)
+                
+                # Number of blocks to mask proportional to ratio
+                # We use probabilistic rounding to ensure expectation matches ratio even for small amounts
+                n_blocks_to_mask_float = num_blocks * ratio
+                n_blocks_to_mask = int(n_blocks_to_mask_float)
+                if torch.rand(1, device=device) < (n_blocks_to_mask_float - n_blocks_to_mask):
+                    n_blocks_to_mask += 1
+                
+                if n_blocks_to_mask > 0:
+                    block_perm = torch.randperm(num_blocks, device=device)[:n_blocks_to_mask]
+                    
+                    # Resolve blocks to bars
+                    bars_to_mask_list = []
+                    for b_idx in block_perm:
+                        start_idx = b_idx * BAR_BLOCK_SIZE
+                        end_idx = min((b_idx + 1) * BAR_BLOCK_SIZE, n_bars)
+                        bars_to_mask_list.append(u_bars_sorted[start_idx:end_idx])
+                    
+                    if bars_to_mask_list:
+                        selected_bars_ch0 = torch.cat(bars_to_mask_list)
+                        mask_ch0 = torch.isin(bar_indices[i], selected_bars_ch0)
+                        mask[i, mask_ch0, 0] = True
+
+                # --- B. Bar-Level Masking for Other Tokens (Channel 1..7) ---
+                # Total units = n_bars * num_attrs_inner
+                total_units = n_bars * num_attrs_inner
+                k_units = torch.round(total_units * ratio).long().item()
+                
+                if k_units > 0:
+                     perm = torch.randperm(total_units, device=device)[:k_units]
+                     sel_bar_indices = perm // num_attrs_inner
+                     sel_attr_indices = perm % num_attrs_inner
+                     
+                     unique_sel_bar_indices = torch.unique(sel_bar_indices)
+                     
+                     for bar_idx_idx in unique_sel_bar_indices:
+                         bar_val = u_bars[bar_idx_idx]
+                         current_bar_match = (sel_bar_indices == bar_idx_idx)
+                         attrs_to_mask_indices = sel_attr_indices[current_bar_match]
+                         actual_attrs = target_attributes_inner[attrs_to_mask_indices]
+                         
+                         pos_mask = (bar_indices[i] == bar_val)
+                         for att in actual_attrs:
+                             mask[i, pos_mask, att] = True
+
+            # Apply per-channel mask token
+            for i in range(len(self.mask_id)):
+                x_t[:, :, i][mask[:, :, i]] = self.mask_id[i]
+            
+            x_0_ignore[torch.bitwise_not(mask)] = -1
+            return x_t, x_0_ignore, mask
+
         candidate_mask = None
         
         if current_strategy == 'bar_all':
