@@ -151,7 +151,7 @@ class AbsorbingDiffusion(Sampler):
             target_attributes_inner = torch.arange(1, 8, device=device)
             num_attrs_inner = len(target_attributes_inner)
             
-            BAR_BLOCK_SIZE = 20
+            BAR_BLOCK_SIZE = 16     # I wanted to go for 13 but it goes against musical structure
 
             # 1. Pre-calculate Lookup Table [Batch, MaxBar+1, Channels]
             # We use the max bar value in the batch to size the boolean lookup.
