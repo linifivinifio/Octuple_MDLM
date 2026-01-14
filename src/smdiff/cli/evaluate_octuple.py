@@ -26,6 +26,13 @@ from note_seq import midi_file_to_note_sequence
 from smdiff.cluster import get_scratch_dir
 
 
+def clean_sample(s):
+    # s is Tensor (T, C)
+    s_np = s.cpu().numpy()
+    # Keep only rows where there is no subtoken that is -1
+    return s_np[~(s_np == -1).any(axis=1)]
+
+
 def load_octuple_dataset(path):
     log(f"Loading dataset from {path}...")
     try:
@@ -151,7 +158,10 @@ def main():
             if isinstance(samples, torch.Tensor):
                 samples = samples.cpu().numpy()
             
-            all_samples.extend([s for s in samples])
+            # remove -1 tokens
+            cleaned_batch = [clean_sample(s) for s in samples]
+            
+            all_samples.extend(cleaned_batch)
             
         generated_samples = all_samples[:args.n_samples]
         

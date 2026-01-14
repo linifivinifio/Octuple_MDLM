@@ -266,9 +266,15 @@ class AbsorbingDiffusion(Sampler):
             x_t, x_0_ignore, mask = self.q_sample(x_0=x_0, t=t)
         elif self.mask_schedule == 'fixed':
             x_t, x_0_ignore, mask = self.q_sample_mlm(x_0=x_0, t=t)
+            
+        # --- FIX 1: Sanitize Input for Embeddings ---
+        # The model cannot take -1 as an input index. We temporarily swap it to 0.
+        # The attention mask (if used) or the loss mask will handle the rest.
+        x_t_input = x_t.clone()
+        x_t_input[x_t == -1] = 0
 
         # sample p(x_0 | x_t)
-        x_0_hat_logits = self._denoise_fn(x_t)
+        x_0_hat_logits = self._denoise_fn(x_t_input)
         x_0_hat_logits = [el.permute(0, 2, 1) for el in x_0_hat_logits]
 
         # --- ENHANCEMENT: Structure Awareness & Channel Weighting ---

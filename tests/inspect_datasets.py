@@ -39,6 +39,15 @@ for f in files:
                         print("  -> LIKELY TIME-FIRST (Time, Channels)")
             else:
                 print(f"Item 0 Content (Sample): {item}")
+            
+            lengths = []
+            count = 0
+            for item in data:
+                lengths.append(item.shape[0])
+                if item.shape[0] < 1024:
+                    count +=1 
+            
+            print(f"MAX: {max(lengths)}, MIN: {min(lengths)}, AVERAGE: {sum(lengths) / len(lengths)}, COUNT < 1024: {count}")
                 
     except Exception as e:
         print(f"Error reading {f}: {e}")

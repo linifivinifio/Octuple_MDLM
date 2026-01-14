@@ -239,26 +239,42 @@ def samples_2_noteseq(np_samples, tokenizer_id=None):
                     if np.any(mask):
                         # Clamp to max_val (usually 'Silence'/'No Event')
                         np_samples[mask] = 0
-                # --------------------------------------------------
+                
+                return converter.from_tensors(np_samples)
             
             if is_octuple:
                 # Octuple Structure: [Bar, Pos, Inst, Pitch, Dur, Vel, Tempo, TimeSig]
-                # Index 2 is Instrument.
                 
-                if 'melody' in tokenizer_id:
-                    # For Melody: Force Instrument to 0 (Grand Piano)
-                    # This cleans up noise where the model hallucinates other instruments
-                    np_samples[:, :, 2] = 0
+                #remove invalid pad tokens (-1)
+                # Convert 3D batch to a list of valid 2D sequences
+                cleaned_samples = []
+                for i in range(len(np_samples)):
+                    sample = np_samples[i]  # Shape: (Time, 8)
                     
-                elif 'trio' in tokenizer_id:
-                    # For Trio: We expect Inst IDs 0, 1, 2 (Melody, Bridge, Piano)
-                    # The model might predict 5, 99, etc. 
-                    # We simply Modulo 3 to force them back into valid track IDs
-                    # OR clamp them. Modulo preserves variance better usually.
-                    np_samples[:, :, 2] = np_samples[:, :, 2] % 3
-            
-            return converter.from_tensors(np_samples)
-            
+                    # Create mask: True only for rows where NO subtoken is -1
+                    # (sample == -1).any(axis=1) finds rows with at least one -1
+                    # ~ inverts it to find rows with NO -1s
+                    valid_rows = ~(sample == -1).any(axis=1)
+                    
+                    sample = sample[valid_rows]
+                    
+                    if 'melody' in tokenizer_id:
+                        # For Melody: Force Instrument to 0 (Grand Piano)
+                        # This cleans up noise where the model hallucinates other instruments
+                        sample[:, 2] = 0
+                        
+                    elif 'trio' in tokenizer_id:
+                        # For Trio: We expect Inst IDs 0, 1, 2 (Melody, Bridge, Piano)
+                        # The model might predict 5, 99, etc. 
+                        # We simply Modulo 3 to force them back into valid track IDs
+                        # OR clamp them. Modulo preserves variance better usually.
+                        sample[:, 2] = sample[:, 2] % 3
+                    
+                    # Append the clean, variable-length sample
+                    cleaned_samples.append(sample)
+
+                return converter.from_tensors(cleaned_samples)
+                
     return []
     
 

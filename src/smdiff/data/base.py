@@ -53,7 +53,7 @@ class SimpleNpyDataset(torch.utils.data.Dataset):
                 x = np.pad(x, (0, pad_len), 'constant')
             else:
                 # Octuple/Trio (Time, Channels) -> Pad time dimension only
-                x = np.pad(x, [(0, pad_len), (0, 0)], 'constant')
+                x = np.pad(x, [(0, pad_len), (0, 0)], 'constant', constant_values=-1)
 
         # 4. Octuple Bar Normalization
         # if self.is_octuple and x.ndim == 2 and x.shape[1] == 8:

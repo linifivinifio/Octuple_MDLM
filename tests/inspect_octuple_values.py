@@ -8,13 +8,14 @@ sys.path.append(os.getcwd())
 from src.smdiff.metrics.common import duration_histogram, velocity_histogram
 
 try:
-    path = r"data/POP909_trio_octuple.npy"
+    # path = r"runs/samples_35000.npy"
+    path = "data/POP909_trio_octuple.npy"
     data = np.load(path, allow_pickle=True)
     
     print(f"Loaded {path}, shape {data.shape}")
     
     # Take first 100 samples
-    samples = data[:100]
+    samples = data[:8]
 
     
     # Inspect Sample 0
@@ -74,7 +75,7 @@ try:
     plt.grid(True)
     
     os.makedirs("plots", exist_ok=True)
-    plt.savefig("plots/single_sample_structure_new_data_and_loss_musicbert.png")
+    plt.savefig("plots/single_sample_structure_no_normalization.png")
     print("Saved plots/single_sample_structure.png")
     
 except Exception as e:
