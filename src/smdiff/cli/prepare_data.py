@@ -84,6 +84,38 @@ def process_midi_file(args):
     return result
 
 
+def chunk_sequences(tensors, block_size=1024):
+    """
+    Splits long sequences into chunks of size `block_size`.
+    Shorter leftovers are kept as-is (to be padded at runtime).
+    """
+    chunked_data = []
+    
+    for x in tensors:
+        length = x.shape[0]
+        
+        # Case 1: Sequence fits in one block
+        if length <= block_size:
+            chunked_data.append(x)
+            continue
+            
+        # Case 2: Sequence needs splitting
+        # We use a non-overlapping stride equal to block_size
+        num_chunks = int(np.ceil(length / block_size))
+        
+        for i in range(num_chunks):
+            start = i * block_size
+            end = min(start + block_size, length)
+            
+            chunk = x[start:end]
+            
+            # Safety check for empty chunks
+            if chunk.shape[0] > 0:
+                chunked_data.append(chunk)
+                
+    return chunked_data
+
+
 def load_dataset(root_dir: str,
                  tokenizer_id: str = "melody",
                  bars: int = 64,
@@ -132,6 +164,15 @@ def load_dataset(root_dir: str,
             result.extend(file_res)
 
     print(f"Extracted {len(result)} sequences.")
+    
+    # --- STRATEGY FIX: Chunking ---
+    # We enforce a maximum length of 1024 here.
+    # Longer sequences are split. Shorter sequences are left alone (padded at runtime).
+    # This ensures Bar 0 is always the start of the first chunk.
+    print("Chunking sequences to max length 1024...")
+    result = chunk_sequences(result, block_size=1024)
+    print(f"Final dataset size: {len(result)} chunks.")
+    # ------------------------------
 
     if cache_path:
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
