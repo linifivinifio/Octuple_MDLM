@@ -76,6 +76,10 @@ def build_underlying_argv(cfg: Dict, ns: argparse.Namespace) -> List[str]:
     if pick("monotonicity_loss"):
         args += ["--monotonicity_loss"]
 
+    loss_weights = pick("loss_weights")
+    if loss_weights is not None:
+        args += ["--loss_weights"] + [str(w) for w in loss_weights]
+
     return args
 
 
@@ -102,6 +106,7 @@ def main():
     parser.add_argument("--bars", type=int, default=None)
     parser.add_argument("--tracks", type=str, default=None)
     parser.add_argument("--monotonicity_loss", action="store_true", default=False)
+    parser.add_argument("--loss_weights", nargs="+", type=float, default=None)
 
     # Frequency/logging settings (kept compatible)
     parser.add_argument("--steps_per_eval", type=int, default=None)

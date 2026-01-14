@@ -68,6 +68,8 @@ def main():
     parser.add_argument("--load_step", type=int, default=0, help="Checkpoint step to load (0 for best/latest)")
     parser.add_argument("--mask_token_start", type=int, default=256, help="Start token index for masking")
     parser.add_argument("--mask_token_end", type=int, default=512, help="End token index for masking")
+    parser.add_argument("--preserve_structure", action="store_true", 
+                        help="If set, leaves Bar (0) and Position (1) tokens unmasked in the target range, masking only musical content.")
     args = parser.parse_args()
     
     
@@ -200,6 +202,7 @@ def main():
         mask_token_start = args.mask_token_start
         mask_token_end = args.mask_token_end
         log(f"Masking Tokens: {mask_token_start} - {mask_token_end} (Range: {mask_token_end - mask_token_start})")
+        log(f"Structure Preservation: {'ENABLED' if args.preserve_structure else 'DISABLED'}")
         
         # Mask ID for Octuple is usually a vector (one per channel)
         if hasattr(sampler, 'mask_id'):
@@ -239,8 +242,13 @@ def main():
                 # Copy original
                 masked_input = original_tokens.copy()
                 
-                # Apply mask to token range
-                masked_input[mask_token_start:mask_token_end] = mask_token_id 
+                if args.preserve_structure:
+                    # Keep Bar (0) and Pos (1) unmasked. 
+                    # Mask columns 2 through 7 (Instrument, Pitch, Dur, Vel, TimeSig, Tempo)
+                        masked_input[mask_token_start:mask_token_end, 2:] = mask_token_id[2:]
+                else:
+                    # Apply mask to token range
+                    masked_input[mask_token_start:mask_token_end] = mask_token_id 
                 
                 # Repeat for batch (2 samples per midi)
                 batch_size = 2

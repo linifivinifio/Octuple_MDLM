@@ -14,7 +14,7 @@ from .common import (
 )
 
 
-def evaluate_infilling(generated_samples, original_samples, mask_start_step, mask_end_step, is_octuple=True):
+def evaluate_infilling(generated_samples, original_samples, mask_start_step, mask_end_step, is_octuple=True, preserve_structure=False):
     """
     Evaluate infilling quality with reconstruction and boundary metrics using token index masking.
     
@@ -75,12 +75,12 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
         
                 token_results.append(100.0 * matches / gen[:l].size)
         
-        metrics['token_accuracy'] = np.mean(token_results) if token_results else 0.0
+        metrics['token_accuracy'] = np.mean(token_results) if token_results else None
         metrics['pitch_accuracy'] = metrics['token_accuracy'] 
         # "Bias Check": If this is 90%+, the model is mostly getting 0s right.
-        metrics['correct_was_zero_pct'] = np.mean(count_zero_results) if count_zero_results else 0.0
+        metrics['correct_was_zero_pct'] = np.mean(count_zero_results) if count_zero_results else None
         # "Real Performance": How well does it predict actual notes?
-        metrics['nonzero_token_accuracy'] = np.mean(nonzero_accuracy_results) if nonzero_accuracy_results else 0.0
+        metrics['nonzero_token_accuracy'] = np.mean(nonzero_accuracy_results) if nonzero_accuracy_results else None
         
         # Duration Accuracy via extracted durations
         dur_diffs = [] # Absolute difference in total duration
@@ -121,7 +121,7 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
         gen_counts = [np.sum(g >= 2) for g in gen_masked]
         orig_counts = [np.sum(o >= 2) for o in orig_masked]
         count_errors = [abs(g - o) for g, o in zip(gen_counts, orig_counts)]
-        metrics['infilled_count_error'] = np.mean(count_errors) if count_errors else 0.0
+        metrics['infilled_count_error'] = np.mean(count_errors) if count_errors else None
 
         # 4. Boundary Smoothness (Pitch)
         # Scan tracks separately
@@ -177,11 +177,11 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
                      ranges.append(val_p.max() - val_p.min())
                  else:
                      ranges.append(0)
-            metrics['pitch_range_mean'] = np.mean(ranges) if ranges else 0.0
+            metrics['pitch_range_mean'] = np.mean(ranges) if ranges else None
         else:
-            metrics['sample_diversity'] = 0.0
-            metrics['valid_samples_pct'] = 0.0
-            metrics['pitch_range_mean'] = 0.0
+            metrics['sample_diversity'] = None
+            metrics['valid_samples_pct'] = None
+            metrics['pitch_range_mean'] = None
 
         return metrics
 
@@ -189,6 +189,12 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
     pitch_accs = []
     duration_accs = []
     token_accs = []
+    
+    # NEW: Structure Integrity Check
+    structure_accs = [] 
+
+    # NEW: Duration Error calculation for Octuple
+    dur_diffs = [] 
     
     for gen, orig in zip(gen_masked, orig_masked):
         # SKIP if original region is empty (no ground truth)
@@ -199,6 +205,8 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
             pitch_accs.append(0.0)
             duration_accs.append(0.0)
             token_accs.append(0.0)
+            if preserve_structure: structure_accs.append(0.0)
+            dur_diffs.append(np.sum(orig[:, duration_idx])) # Max error (missed everything)
         else:
             # Truncate to min length for comparison
             min_len = min(len(gen), len(orig))
@@ -213,11 +221,32 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
             
             t_acc = _token_accuracy(g_trunc, o_trunc)
             token_accs.append(t_acc)
+
+            # --- ENHANCEMENT 1: Structure Integrity ---
+            if preserve_structure:
+                # Check Bar (0) and Pos (1)
+                struct_match = (g_trunc[:, :2] == o_trunc[:, :2]).all(axis=1).sum()
+                structure_accs.append(100.0 * struct_match / min_len)
+
+
+            # Sum the Duration tokens (Index 4)
+            total_gen_dur = np.sum(g_trunc[:, duration_idx])
+            total_orig_dur = np.sum(o_trunc[:, duration_idx])
+            dur_diffs.append(abs(total_gen_dur - total_orig_dur))
+
     
-    metrics['pitch_accuracy'] = np.mean(pitch_accs) if pitch_accs else 0.0
-    metrics['duration_accuracy'] = np.mean(duration_accs) if duration_accs else 0.0
-    metrics['token_accuracy'] = np.mean(token_accs) if token_accs else 0.0
-    metrics['infilled_duration_total_error'] = None # Not implemented for Octuple yet
+    metrics['pitch_accuracy'] = np.mean(pitch_accs) if pitch_accs else None
+    metrics['duration_accuracy'] = np.mean(duration_accs) if duration_accs else None
+    metrics['token_accuracy'] = np.mean(token_accs) if token_accs else None
+    
+    # Update Metrics Dict
+    if dur_diffs:
+        metrics['infilled_duration_total_error'] = np.mean(dur_diffs)
+    else:
+        metrics['infilled_duration_total_error'] = None
+
+    if preserve_structure:
+        metrics['structure_accuracy'] = np.mean(structure_accs) if structure_accs else None
     
     # Musical quality in masked region
     # Filter out empty arrays for histogram calculation
@@ -229,7 +258,7 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
         orig_pch = pitch_class_histogram(orig_valid, pitch_idx=pitch_idx)
         metrics['infilled_pch_kl'] = kl_divergence(orig_pch, gen_pch)
     else:
-        metrics['infilled_pch_kl'] = 0.0
+        metrics['infilled_pch_kl'] = None
     
     # Note count error (Total events difference in masked region)
     def _count_notes(x):
@@ -239,7 +268,7 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
     orig_counts = [_count_notes(o) for o in orig_masked]
     
     count_errors = [abs(g - o) for g, o in zip(gen_counts, orig_counts)]
-    metrics['infilled_count_error'] = np.mean(count_errors) if count_errors else 0.0
+    metrics['infilled_count_error'] = np.mean(count_errors) if count_errors else None
     
     # Boundary coherence metrics
     # Improved: check pitch/duration distance between last pre-mask event and first mask event
@@ -279,14 +308,14 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
                 pitch_smoothness.append(abs(p_pre - p_at))
                 rhythm_smoothness.append(abs(d_pre - d_at))
             
-    metrics['boundary_pitch_smoothness'] = np.mean(pitch_smoothness) if pitch_smoothness else 0.0
-    metrics['boundary_rhythm_smoothness'] = np.mean(rhythm_smoothness) if rhythm_smoothness else 0.0
-    metrics['boundary_matches_pct'] = 100.0 * boundary_matches / boundary_checks if boundary_checks > 0 else 0.0
+    metrics['boundary_pitch_smoothness'] = np.mean(pitch_smoothness) if pitch_smoothness else None
+    metrics['boundary_rhythm_smoothness'] = np.mean(rhythm_smoothness) if rhythm_smoothness else None
+    metrics['boundary_matches_pct'] = 100.0 * boundary_matches / boundary_checks if boundary_checks > 0 else None
     
     # General quality metrics (full samples)
     if generated_samples:
         pitch_ranges = [compute_pitch_range(s, pitch_idx=pitch_idx) for s in generated_samples]
-        metrics['pitch_range_mean'] = np.mean(pitch_ranges) if pitch_ranges else 0.0
+        metrics['pitch_range_mean'] = np.mean(pitch_ranges) if pitch_ranges else None
         
         metrics['sample_diversity'] = compute_sample_diversity(generated_samples, 
                                                              pitch_idx=pitch_idx, 
@@ -297,9 +326,9 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
                                           duration_idx=duration_idx) for s in generated_samples])
         metrics['valid_samples_pct'] = 100.0 * valid_count / len(generated_samples)
     else:
-        metrics['pitch_range_mean'] = 0.0
-        metrics['sample_diversity'] = 0.0
-        metrics['valid_samples_pct'] = 0.0
+        metrics['pitch_range_mean'] = None
+        metrics['sample_diversity'] = None
+        metrics['valid_samples_pct'] = None
     
     return metrics
 

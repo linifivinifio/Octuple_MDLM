@@ -26,6 +26,7 @@ class AbsorbingDiffusion(Sampler):
 
         # Partial masking strategy
         self.masking_strategy = getattr(H, 'masking_strategy', None)
+        self.loss_weights = getattr(H, "loss_weights", None)
 
         # Track loss at each time step for importance sampling
         self.register_buffer('Lt_history', torch.zeros(self.num_timesteps+1))
@@ -276,14 +277,29 @@ class AbsorbingDiffusion(Sampler):
         # sample p(x_0 | x_t)
         x_0_hat_logits = self._denoise_fn(x_t_input)
         x_0_hat_logits = [el.permute(0, 2, 1) for el in x_0_hat_logits]
+        
+        cross_entropy_loss_per_channel = [F.cross_entropy(x, x_0_ignore[:, :, i], ignore_index=-1, reduction='none').sum(1)
+                              for i, x in enumerate(x_0_hat_logits)]
+        cross_entropy_loss_stack = torch.stack(cross_entropy_loss_per_channel)
 
         # --- ENHANCEMENT: Structure Awareness & Channel Weighting ---
         # Detect Octuple encoding (8 channels)
         is_octuple = (len(x_0_hat_logits) == 8)
         
-        cross_entropy_loss = [F.cross_entropy(x, x_0_ignore[:, :, i], ignore_index=-1, reduction='none').sum(1)
-                              for i, x in enumerate(x_0_hat_logits)]
-        cross_entropy_loss = torch.stack(cross_entropy_loss).sum(0)
+        if is_octuple:
+            if self.loss_weights is not None:
+                weights = torch.tensor(self.loss_weights, device=device)
+            else:
+                weights = torch.tensor([1.0] * 8, device=device)
+            
+            if len(weights) != 8:
+                raise ValueError(f"Expected 8 weights, got {len(weights)} instead!")
+
+            weighted_ce = cross_entropy_loss_stack * weights.unsqueeze(1)
+            cross_entropy_loss = weighted_ce.sum(0)
+        
+        else:
+            cross_entropy_loss = cross_entropy_loss_stack.sum(0)
 
         # --- ENHANCEMENT: Structure Regression Loss (Bar & Position) ---
         aux_loss = 0.0
