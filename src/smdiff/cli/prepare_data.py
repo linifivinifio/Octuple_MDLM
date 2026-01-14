@@ -110,7 +110,7 @@ def chunk_sequences(tensors, block_size=1024):
             chunk = x[start:end]
             
             # Safety check for empty chunks
-            if chunk.shape[0] > 0:
+            if chunk.shape[0] > 256: # threshold to have meaningful learning samples
                 chunked_data.append(chunk)
                 
     return chunked_data
@@ -171,6 +171,7 @@ def load_dataset(root_dir: str,
     # This ensures Bar 0 is always the start of the first chunk.
     print("Chunking sequences to max length 1024...")
     result = chunk_sequences(result, block_size=1024)
+    
     print(f"Final dataset size: {len(result)} chunks.")
     # ------------------------------
 

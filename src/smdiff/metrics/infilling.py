@@ -54,14 +54,33 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
         # TRIO Metrics
         # 1. Reconstruction (Token Accuracy is Proxy for all)
         token_results = []
+        count_zero_results = []
+        nonzero_accuracy_results = []
         for gen, orig in zip(gen_masked, orig_masked):
             if len(gen) > 0 and len(orig) > 0:
                 l = min(len(gen), len(orig))
-                matches = (gen[:l] == orig[:l]).sum()
+                matches_mask = (gen[:l] == orig[:l])
+                zeros_mask = gen[:l] == 0
+                nonzeros_mask = ~zeros_mask
+                
+                matches = matches_mask.sum()
+                count_zeros = (matches_mask & zeros_mask).sum()
+                if matches > 0:
+                    count_zero_results.append(100.0 * count_zeros / matches)
+
+                if nonzeros_mask.sum() > 0:
+                    correct_nonzeros = (matches_mask & nonzeros_mask).sum()
+                    nonzero_accuracy_results.append(100.0 * correct_nonzeros / nonzeros_mask.sum())
+                
+        
                 token_results.append(100.0 * matches / gen[:l].size)
         
         metrics['token_accuracy'] = np.mean(token_results) if token_results else 0.0
         metrics['pitch_accuracy'] = metrics['token_accuracy'] 
+        # "Bias Check": If this is 90%+, the model is mostly getting 0s right.
+        metrics['correct_was_zero_pct'] = np.mean(count_zero_results) if count_zero_results else 0.0
+        # "Real Performance": How well does it predict actual notes?
+        metrics['nonzero_token_accuracy'] = np.mean(nonzero_accuracy_results) if nonzero_accuracy_results else 0.0
         
         # Duration Accuracy via extracted durations
         dur_diffs = [] # Absolute difference in total duration
