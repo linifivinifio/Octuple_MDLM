@@ -144,76 +144,118 @@ class AbsorbingDiffusion(Sampler):
 
         if current_strategy == 'sync':            
             # Implementation of "Synchronized Masking" for learning sequentiality.
-            # 1. Bar Token (Channel 0): select K (Block of Bars, Bar) pairs where K ~ t/T * TotalUnits
-            #     Mask bar-attribute in specific blocks of bars
-            # 2. Other Tokens (Pos, Pitch, etc): Select K (Bar, Attribute) pairs where K ~ t/T * TotalUnits
-            #     Mask specific attributes in specific bars.
+            # Optimized with lookup table.
             
-            bar_indices = x_0[:, :, 0]
+            bar_indices = x_0[:, :, 0] # (B, Time)
             # Channels 1 through 7
-            target_attributes_inner = torch.tensor([0, 1, 3, 4, 5, 7], device=device)
+            target_attributes_inner = torch.arange(1, 8, device=device)
             num_attrs_inner = len(target_attributes_inner)
             
             BAR_BLOCK_SIZE = 20
 
+            # 1. Pre-calculate Lookup Table [Batch, MaxBar+1, Channels]
+            # We use the max bar value in the batch to size the boolean lookup.
+            max_bar = bar_indices.max().item()
+            mask_lookup = torch.zeros((b, max_bar + 1, 8), dtype=torch.bool, device=device)
+
             for i in range(b):
                 u_bars = torch.unique(bar_indices[i])
-                # u_bars_sorted, _ = torch.sort(u_bars)
                 n_bars = len(u_bars)
                 
-                # t[i] is 1..T
                 ratio = t[i].float() / self.num_timesteps
                 
-                # --- A. Block Masking for Bar
-                # We define units as "Blocks of 8 Bars"
-                num_blocks = math.ceil(n_bars / BAR_BLOCK_SIZE)
+                # --- A. Adaptive Block Masking for Bar (Channel 0) ---
+                # 1. Calculate exact target bars to mask (probabilistic rounding)
+                total_vals = n_bars * ratio
+                total_bars_target = int(total_vals)
+                if torch.rand(1, device=device) < (total_vals - total_bars_target):
+                    total_bars_target += 1
                 
-                # Number of blocks to mask proportional to ratio
-                val_blocks = num_blocks * ratio
-                n_blocks_to_mask = int(val_blocks)
-                if torch.rand(1, device=device) < (val_blocks - n_blocks_to_mask):
-                    n_blocks_to_mask += 1
-                
-                if n_blocks_to_mask > 0:
-                    block_perm = torch.randperm(num_blocks, device=device)[:n_blocks_to_mask]
+                if total_bars_target > 0:
+                    # 2. Define all available grid blocks
+                    all_blocks = [] 
+                    num_blocks_total = math.ceil(n_bars / BAR_BLOCK_SIZE)
+                    for b_idx in range(num_blocks_total):
+                        start = b_idx * BAR_BLOCK_SIZE
+                        end = min(start + BAR_BLOCK_SIZE, n_bars)
+                        all_blocks.append(u_bars[start:end])
                     
-                    # Resolve blocks to bars
-                    bars_to_mask_list = []
-                    for b_idx in block_perm:
-                        start_idx = b_idx * BAR_BLOCK_SIZE
-                        end_idx = min((b_idx + 1) * BAR_BLOCK_SIZE, n_bars)
-                        bars_to_mask_list.append(u_bars[start_idx:end_idx])
+                    # 3. Identify Full (20) vs Partial (<20) blocks
+                    full_blocks_indices = [idx for idx, blk in enumerate(all_blocks) if len(blk) == BAR_BLOCK_SIZE]
                     
-                    if bars_to_mask_list:
-                        selected_bars_ch0 = torch.cat(bars_to_mask_list)
-                        mask_ch0 = torch.isin(bar_indices[i], selected_bars_ch0)
-                        mask[i, mask_ch0, 0] = True
+                    bars_to_mask_acc = []
+                    current_masked_count = 0
+                    chose_indices_set = set()
+
+                    # 4. Fill quota using as many Full Blocks as possible
+                    max_full_possible = total_bars_target // BAR_BLOCK_SIZE
+                    num_full_to_take = min(max_full_possible, len(full_blocks_indices))
+                    
+                    if num_full_to_take > 0:
+                        # Randomly select from available full blocks
+                        perm_full = torch.randperm(len(full_blocks_indices), device=device)[:num_full_to_take]
+                        # Map back to original indices
+                        chosen_indices_tensor = torch.tensor(full_blocks_indices, device=device)[perm_full]
+                        chosen_indices = chosen_indices_tensor.tolist()
+                        
+                        for idx in chosen_indices:
+                            bars_to_mask_acc.append(all_blocks[idx])
+                            current_masked_count += BAR_BLOCK_SIZE
+                            chose_indices_set.add(idx)
+
+                    # 5. Handle Remainder (Adaptive Block)
+                    remainder_needed = total_bars_target - current_masked_count
+                    remaining_indices = [x for x in range(len(all_blocks)) if x not in chose_indices_set]
+                    
+                    if remainder_needed > 0 and remaining_indices:
+                        perm_rem = torch.randperm(len(remaining_indices), device=device).tolist()
+                        
+                        for p_idx in perm_rem:
+                            if remainder_needed <= 0:
+                                break
+                            
+                            block_idx = remaining_indices[p_idx]
+                            blk = all_blocks[block_idx]
+                            blk_len = len(blk)
+                            
+                            if blk_len <= remainder_needed:
+                                # Take whole block
+                                bars_to_mask_acc.append(blk)
+                                remainder_needed -= blk_len
+                            else:
+                                # Take partial block (random contiguous slice)
+                                start_offset = torch.randint(0, blk_len - remainder_needed + 1, (1,), device=device).item()
+                                bars_to_mask_acc.append(blk[start_offset : start_offset + remainder_needed])
+                                remainder_needed = 0
+                    
+                    if bars_to_mask_acc:
+                        selected_bars_ch0 = torch.cat(bars_to_mask_acc)
+                        # Fill lookup: for this batch i, these bars, channel 0 is masked
+                        mask_lookup[i, selected_bars_ch0, 0] = True
 
                 # --- B. Bar-Level Masking for Other Tokens (Channel 1..7) ---
-                # Total units = n_bars * num_attrs_inner
                 total_units = n_bars * num_attrs_inner
-                
                 val_units = total_units * ratio
                 k_units = int(val_units)
-                if torch.rand(1, device=device) < (val_units - k_units):
+                if torch.rand(1, device=device) < (val_units - k_units): 
                     k_units += 1
                 
                 if k_units > 0:
                         perm = torch.randperm(total_units, device=device)[:k_units]
-                        sel_bar_indices = perm // num_attrs_inner
-                        sel_attr_indices = perm % num_attrs_inner
+                        sel_bar_indices_idx = perm // num_attrs_inner
+                        sel_attr_indices_idx = perm % num_attrs_inner
                         
-                        unique_sel_bar_indices = torch.unique(sel_bar_indices)
+                        actual_bars = u_bars[sel_bar_indices_idx]
+                        actual_attrs = target_attributes_inner[sel_attr_indices_idx]
                         
-                        for bar_idx_idx in unique_sel_bar_indices:
-                            bar_val = u_bars[bar_idx_idx]
-                            current_bar_match = (sel_bar_indices == bar_idx_idx)
-                            attrs_to_mask_indices = sel_attr_indices[current_bar_match]
-                            actual_attrs = target_attributes_inner[attrs_to_mask_indices]
-                            
-                            pos_mask = (bar_indices[i] == bar_val)
-                            for att in actual_attrs:
-                                mask[i, pos_mask, att] = True
+                        # Fill lookup vectorized for this batch item
+                        mask_lookup[i, actual_bars, actual_attrs] = True
+
+            # 2. Vectorized Application
+            # Gather mask from lookup table based on Bar Token values in sequence
+            # batch_ids: (B, L)
+            batch_ids = torch.arange(b, device=device)[:, None].expand_as(bar_indices)
+            mask = mask_lookup[batch_ids, bar_indices]
 
             # Apply per-channel mask token
             for i in range(len(self.mask_id)):

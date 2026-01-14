@@ -31,6 +31,11 @@ MASKING_REGISTRY: Dict[str, MaskingSpec] = {
         description="Dynamic attribute-level masking: masks K (bar, attribute) pairs where K is proportional to t/T",
         notes="Attribute is chosen from {pitch,duration,velocity,tempo}. K scales linearly with timestep.",
     ),
+    "sync": MaskingSpec(
+        id="sync",
+        description="Dynamic attribute-level masking: masks K (bar, attribute) pairs where K is proportional to t/T, extend logic to bars",
+        notes="Attribute is chosen from {pitch,duration,velocity,tempo}. K scales linearly with timestep.",
+    ),
     
 }
 
