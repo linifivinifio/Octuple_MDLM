@@ -28,7 +28,10 @@ from smdiff.cluster import get_scratch_dir
 
 def clean_sample(s):
     # s is Tensor (T, C)
-    s_np = s.cpu().numpy()
+    if hasattr(s, 'cpu'):
+        s_np = s.cpu().numpy()
+    else:
+        s_np = s
     # Keep only rows where there is no subtoken that is -1
     return s_np[~(s_np == -1).any(axis=1)]
 
