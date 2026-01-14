@@ -2,7 +2,7 @@
 #SBATCH --job-name=oct_mask_trio
 #SBATCH --output=logs/oct_mask_trio_%j.out
 #SBATCH --error=logs/oct_mask_trio_%j.err
-#SBATCH --time=16:00:00
+#SBATCH --time=12:00:00
 #SBATCH --partition=student
 #SBATCH --account=deep_learning
 #SBATCH --gpus=1
@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-source .venv/bin/activate
+source ~/jupyter/bin/activate
 export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
 
 mkdir -p logs
@@ -29,7 +29,7 @@ python3 src/smdiff/cli/train.py \
   --seed 67 \
   --wandb \
   --wandb_project "octubert-music" \
-  --wandb_name "octuple-mask-ddpm-trio-octuple-bar-attribute" # \
-#  --monotonicity_loss
+  --wandb_name "octuple-mask-ddpm-trio-octuple-bar-attribute" \
+  --monotonicity_loss
 
 echo "Job finished at $(date)"
