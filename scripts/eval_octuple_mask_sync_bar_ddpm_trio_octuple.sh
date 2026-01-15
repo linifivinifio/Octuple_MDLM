@@ -17,7 +17,7 @@ mkdir -p logs
 nvidia-smi || true
 
 MODEL_ID="octuple_mask_ddpm"
-RUN_DIR="runs/slim_octuple_mask_ddpm_trio_octuple_sync_bar"
+RUN_DIR="runs/octuple_mask_ddpm_trio_octuple_sync_bar"
 INFILL_MIDI_DIR="data/test/POP909"
 
 echo "========================================"
