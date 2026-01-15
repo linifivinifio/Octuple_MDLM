@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-source ~/jupyter/bin/activate
+source .venv/bin/activate
 export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
 
 mkdir -p logs
