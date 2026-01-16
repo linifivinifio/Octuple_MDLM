@@ -27,7 +27,7 @@ class HparamsAbsorbing(HparamsBase):
         self.loss_type = "reweighted_elbo"
         self.sample_type = "diffusion"
         self.mask_schedule = "random"
-        self.sample_schedule = "random"#"barwise"
+        self.sample_schedule = "random"
         self.attn_pdrop = 0.2
         self.embd_pdrop = 0.2
         self.resid_pdrop = 0.2
@@ -45,7 +45,7 @@ class HparamsAbsorbing(HparamsBase):
         self.lr = 5e-4
         self.warmup_iters = 10000
         self.validation_set_size = 0.05
-        self.augment = True
+        self.augment = False
 
         self.apply_parser_values(parser)
 
@@ -60,7 +60,8 @@ class HparamsAbsorbing(HparamsBase):
             self.log_dir = f'log_{self.model}_{self.tracks}_{self.NOTES}'
         if not self.load_dir:
             self.load_dir = self.log_dir
-        self.codebook_size = (90, ) if self.tracks == 'melody' else (90, 90, 512)
+        print("DEEBUG: Tracks: ", self.tracks)
+        self.codebook_size = (128, ) if self.tracks == 'melody' else (128, 128, 128)
         self.latent_shape = (self.NOTES, len(self.codebook_size))
         self.load_optim = self.load_step != 0
 
@@ -95,7 +96,7 @@ class HparamsOctuple(HparamsAbsorbing):
     def __init__(self, parser):
         super().__init__(parser)
         
-        self.codebook_size = (2048, 128, 129, 256, 128, 32, 256, 49)
+        # time, tempo, bar, position, instrument/program, pitch, durration, velocity
+        self.codebook_size = (260, 132, 133, 132, 132, 36, 258, 53)
         self.latent_shape = (self.NOTES, 8)
-        self.augment = False # Disable augmentation for Octuple initially
 

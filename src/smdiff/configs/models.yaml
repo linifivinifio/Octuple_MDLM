@@ -1,0 +1,28 @@
+# Per-model overrides relative to base.yaml
+
+schmu_conv_vae:
+  model: schmu_conv_vae
+  internal_model: conv_transformer
+  dataset_id: pop909_trio
+
+schmu_tx_vae:
+  model: schmu_tx_vae
+  internal_model: transformer
+  dataset_id: pop909_trio
+
+octuple_ddpm:
+  model: octuple_ddpm
+  internal_model: octuple_ddpm
+  dataset_id: pop909_trio_octuple
+
+octuple_mask_ddpm:
+  model: octuple_mask_ddpm
+  internal_model: octuple_mask_ddpm
+  dataset_id: pop909_trio_octuple
+
+musicbert_ddpm:
+  model: musicbert_ddpm
+  internal_model: musicbert_ddpm
+  dataset_id: pop909_trio_octuple
+  
+

@@ -1,0 +1,20 @@
+# Common training defaults
+model: schmu_tx_vae
+tracks: trio
+bars: 64
+batch_size: 16
+lr: 0.0005
+ema: true
+ema_beta: 0.995
+amp: true
+steps_per_log: 10
+steps_per_eval: 20
+steps_per_checkpoint: 50
+steps_per_sample: 50
+steps_per_update_ema: 10
+log_base_dir: null
+load_dir: null
+load_step: 0
+masking_strategy: null
+dataset_path: data/POP909_trio.npy
+port: 8097

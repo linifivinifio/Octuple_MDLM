@@ -2,7 +2,7 @@
 import torch
 import numpy as np
 from types import SimpleNamespace
-from models.absorbing_diffusion import AbsorbingDiffusion
+from src.smdiff.models.absorbing_diffusion import AbsorbingDiffusion
 
 def test_masking_strategies():
     print("Starting Masking Strategy Validation...")
