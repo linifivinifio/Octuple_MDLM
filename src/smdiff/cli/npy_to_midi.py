@@ -1,4 +1,5 @@
 import os
+import sys
 import glob
 import argparse
 import yaml
@@ -7,9 +8,21 @@ import torch
 from tqdm import tqdm
 from note_seq import note_sequence_to_midi_file
 
+# Ensure repository root is on sys.path so top-level packages like 'hparams' resolve
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+# Also ensure 'src' is on sys.path so 'smdiff' package resolves when running by path
+_SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
+
+
 # Import your existing utilities
 from src.smdiff.utils.log_utils import samples_2_noteseq
 from src.smdiff.tokenizers.registry import resolve_tokenizer_id
+
 
 def load_tokenizer_id(run_dir):
     """Try to infer tokenizer_id from hparams.yaml or config.yaml"""

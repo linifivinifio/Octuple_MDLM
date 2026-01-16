@@ -1,6 +1,7 @@
 """Prepare POP909 datasets into NumPy caches (OneHot and Octuple formats)."""
 import argparse
 import os
+import sys
 import warnings
 from functools import partial
 from multiprocessing import Pool
@@ -16,6 +17,16 @@ from ..preprocessing import (
     POP909OctupleMelodyConverter,
     POP909OctupleTrioConverter
 )
+
+# Ensure repository root is on sys.path so top-level packages like 'hparams' resolve
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+# Also ensure 'src' is on sys.path so 'smdiff' package resolves when running by path
+_SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
 
 
 def _make_converter(tokenizer_id: str, bars: int, max_t_per_ns: int, strict_tempo: bool = False):
