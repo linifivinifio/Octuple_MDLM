@@ -267,9 +267,23 @@ def main(H):
         if H.ema: ema_sampler.train()
         step_start_time = time.time()
 
-        # 1. Warmup
+        # 1. Warmup & Learning Rate Schedule
         if H.warmup_iters and step <= H.warmup_iters:
             optim_warmup(H, step, optim)
+        elif getattr(H, 'lr_scheduler', None) == 'cosine':
+            # Cosine Decay: Decay from H.lr down to 0 over the remaining steps
+            n_warmup = H.warmup_iters if H.warmup_iters else 0
+            decay_steps = H.train_steps - n_warmup
+            
+            if decay_steps > 0:
+                current_decay_step = step - n_warmup
+                progress = min(current_decay_step / decay_steps, 1.0)
+                
+                # Standard cosine decay formula: 0.5 * lr * (1 + cos(pi * progress))
+                new_lr = 0.5 * H.lr * (1 + np.cos(np.pi * progress))
+                
+                for param_group in optim.param_groups:
+                    param_group['lr'] = new_lr
 
         # 2. Train Step
         x = augment_note_tensor(H, next(train_iterator))
