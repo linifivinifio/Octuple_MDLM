@@ -262,7 +262,6 @@ def main():
                 generated_samples.extend([s for s in samples])
                 original_samples_for_metrics.extend([original_tokens] * batch_size)
                 
-                # Save immediately to avoid memory issues? Or valid list
                 # Just save individual batch here (convenience)
                 mid_name = os.path.splitext(os.path.basename(midi_path))[0]
                 save_generated_samples(samples, "trio_octuple", samples_dir, prefix=f"infill_{mid_name}")
