@@ -4,8 +4,6 @@
 
 This document describes all evaluation metrics used for symbolic music generation, their meanings, and expected ranges.
 
----
-
 ## Unconditional Generation Metrics
 
 Compares generated samples against training data distribution to assess realism and diversity.
@@ -14,7 +12,7 @@ Compares generated samples against training data distribution to assess realism 
 
 #### **Pitch Class Histogram KL Divergence** (`pch_kl`)
 
-- **What**: KL divergence between pitch class (0-11, C to B) distributions
+- **What**: KL divergence between pitch class distributions
 - **Meaning**: How closely generated pitch usage matches training data
 - **Range**: [0, ∞), lower is better
 - **Good Value**: < 0.5 (very realistic), < 1.0 (acceptable)
@@ -26,7 +24,7 @@ Compares generated samples against training data distribution to assess realism 
 - **Meaning**: How closely generated note lengths match training data
 - **Range**: [0, ∞), lower is better
 - **Good Value**: < 0.5 (realistic rhythms)
-- **Poor Value**: > 2.0 (unrealistic note lengths, e.g., 196-hour notes)
+- **Poor Value**: > 2.0 (unrealistic note lengths)
 
 #### **Velocity KL Divergence** (`velocity_kl`)
 
@@ -42,8 +40,6 @@ Compares generated samples against training data distribution to assess realism 
 - **Range**: [0, ∞), lower is better
 - **Good Value**: < 0.3
 - **Poor Value**: > 1.0 (too sparse or too dense)
-
----
 
 ### Musical Coherence Metrics
 
@@ -62,15 +58,6 @@ Compares generated samples against training data distribution to assess realism 
 - **Range**: [0, 127] semitones
 - **Typical**: 24-48 (2-4 octaves for melody), 60-84 (5-7 octaves for trio)
 
-#### **Average Polyphony** (`avg_polyphony`)
-
-- **What**: Mean number of simultaneous notes
-- **Meaning**: Harmonic density
-- **Range**: [1, ∞)
-- **Typical**: 1.0-1.5 (melody), 2.0-4.0 (trio)
-
----
-
 ### Diversity Metrics
 
 #### **Sample Diversity** (`sample_diversity`)
@@ -78,10 +65,6 @@ Compares generated samples against training data distribution to assess realism 
 - **What**: Average pairwise L2 distance between samples in feature space
 - **Meaning**: How varied the generated samples are
 - **Range**: [0, ∞), higher is better
-- **Good Value**: > 0.3 (diverse outputs)
-- **Poor Value**: < 0.1 (mode collapse, all samples similar)
-
----
 
 ### Validity Metrics
 
@@ -90,10 +73,6 @@ Compares generated samples against training data distribution to assess realism 
 - **What**: Percentage of samples that decode to valid MIDI
 - **Meaning**: Model generates structurally valid music
 - **Range**: [0, 100]%
-- **Good Value**: > 95%
-- **Poor Value**: < 80%
-
----
 
 ## Infilling Metrics
 
@@ -106,31 +85,25 @@ Evaluates reconstruction accuracy and musical quality in masked regions.
 - **What**: % of pitches matching ground truth in masked region
 - **Meaning**: How accurately the model reconstructs the original pitches
 - **Range**: [0, 100]%, higher is better
-- **Good Value**: > 40% (difficult task)
-- **Excellent Value**: > 60%
 
 #### **Duration Accuracy** (`duration_accuracy`)
 
 - **What**: % of durations matching ground truth in masked region
 - **Meaning**: How accurately the model reconstructs rhythm
 - **Range**: [0, 100]%, higher is better
-- **Good Value**: > 30%
 
 #### **Token Accuracy** (`token_accuracy`)
 
 - **What**: % of full 8-tuple tokens exactly matching ground truth
 - **Meaning**: Perfect reconstruction rate (strictest metric)
 - **Range**: [0, 100]%, higher is better
-- **Good Value**: > 10% (very strict)
 - **Note**: Low values expected since all 8 attributes must match
-
----
 
 ### Boundary Coherence Metrics
 
 #### **Boundary Pitch Smoothness** (`boundary_pitch_smoothness`)
 
-- **What**: Average pitch difference at mask boundaries (bars 16 & 32)
+- **What**: Average pitch difference at mask boundaries per instrument
 - **Meaning**: How well infilled music connects to context
 - **Range**: [0, 127] semitones, lower is better
 - **Good Value**: < 5 (smooth transitions)
@@ -142,8 +115,6 @@ Evaluates reconstruction accuracy and musical quality in masked regions.
 - **Meaning**: Rhythmic continuity at edges
 - **Range**: [0, ∞), lower is better
 - **Good Value**: < 2.0
-
----
 
 ### Musical Quality in Masked Region
 
@@ -160,72 +131,3 @@ Evaluates reconstruction accuracy and musical quality in masked regions.
 - **Meaning**: Activity level consistency
 - **Range**: [0, ∞), lower is better
 - **Good Value**: < 1.0 note/bar
-
----
-
-## Metric Availability by Task
-
-| Metric | Unconditional | Infilling |
-| ------ | ------------- | --------- |
-| PCH KL | ✓ (vs dataset) | ✓ (vs original) |
-| Duration KL | ✓ | ✓ |
-| Velocity KL | ✓ | ✓ |
-| Note Density KL | ✓ | - |
-| Self-Similarity | ✓ | ✓ |
-| Pitch Range | ✓ | ✓ |
-| Sample Diversity | ✓ | ✓ |
-| Valid Samples % | ✓ | ✓ |
-| Pitch Accuracy | - | ✓ |
-| Duration Accuracy | - | ✓ |
-| Token Accuracy | - | ✓ |
-| Boundary Smoothness | - | ✓ |
-| Infilled Density Error | - | ✓ |
-
----
-
-## Interpretation Guide
-
-### Early Training (Steps 0-1000)
-
-- Expect **poor** distribution KL (> 2.0)
-- Low accuracy (< 10%)
-- Poor self-similarity (< 0.2)
-- Many invalid samples
-
-### Mid Training (Steps 1000-5000)
-
-- Distribution KL improving (1.0-2.0)
-- Accuracy rising (20-40%)
-- Self-similarity emerging (0.3-0.5)
-- Mostly valid samples (> 90%)
-
-### Well-Trained (Steps 5000+)
-
-- Good distribution KL (< 0.5)
-- Decent accuracy (> 40%)
-- Musical structure (0.4-0.6)
-- Nearly all valid (> 95%)
-
----
-
-## Usage
-
-```bash
-# Evaluate unconditional generation
-python -m smdiff.cli.evaluate \
-  --task uncond \
-  --model octuple_ddpm \
-  --load_dir runs/octuple_ddpm_trio_octuple \
-  --dataset_id pop909_trio_octuple \
-  --n_samples 100
-
-# Evaluate infilling
-python -m smdiff.cli.evaluate \
-  --task infill \
-  --model octuple_ddpm \
-  --load_dir runs/octuple_ddpm_trio_octuple \
-  --dataset_id pop909_trio_octuple \
-  --mask_start_bar 16 \
-  --mask_end_bar 32 \
-  --n_samples 100
-```

@@ -12,7 +12,7 @@ The goal is to introduce explicit Octuple encoding for MIDI data and compare dif
 
 The dataset is the highly curated [POP909 dataset](https://github.com/music-x-lab/POP909-Dataset). it natively has three tracks: MELODY, PIANO, BRIDGE. All tracks are played by the same MIDI intrument however: Grand Acoustic Piano.
 
-The original SchmuBERT implementation does not support this track distinction, so we enhanced the conversion pipelines to keep the structure of the POP909 songs. POP909 songs come with tempo annotation and tempo changes natively, but to be able ro process them fully when converting to wncoded format, we normalized a song by choosing the starting tempo as the general tempo for the whole song. Given these are all pop songs, this is a valid simplification to make.
+The original SchmuBERT implementation does not support this track distinction, so we enhanced the conversion pipelines to keep the structure of the POP909 songs. POP909 songs come with tempo annotation and tempo changes natively, but to be able to process them fully when converting to encoded format, we normalized a song by choosing the starting tempo as the general tempo for the whole song. Given these are all pop songs, this is a valid simplification to make.
 
 ## Available Components
 
