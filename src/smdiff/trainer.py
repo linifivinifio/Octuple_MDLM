@@ -320,9 +320,19 @@ def main(H):
             scaler.scale(stats['loss']).backward()
             
             if is_update_step:
+                # 1. Unscale gradients explicitly
+                scaler.unscale_(optim)
+                
+                # 2. Clip gradients (Prevents exploding gradients -> NaNs)
+                # Notes: 1.0 is a reasonable default for diffusion models
+                torch.nn.utils.clip_grad_norm_(sampler.parameters(), 1.0)
+                
+                # 3. Step the optimizer
                 scaler.step(optim)
+                
+                # 4. Update scaler for next iteration
                 scaler.update()
-                scaler.unscale_(optim) # Optional: usually done automatically by step, but explicit for some schedulers
+                
                 optim.zero_grad()
         else:
             stats = sampler.train_iter(x)
