@@ -129,6 +129,8 @@ def main():
     parser.add_argument("--log_base_dir", type=str, default=None)
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--grad_acc", type=int, nargs='?', const=48, default=0, 
+                        help="Target effective batch size. If used as a flag (--grad_acc), defaults to 48. Can also set specific value (--grad_acc 96).")
     
     # wanDB
     parser.add_argument("--wandb", const=True, action="store_const", default=False, help="Enable WandB logging")
@@ -193,7 +195,8 @@ def main():
     H.tokenizer_id = tokenizer_id
     H.dataset_id = ns.dataset_id
     H.model_id = ns.model  # Store canonical model_id for registry lookup
-    
+    H.grad_acc = ns.grad_acc
+
     H.wandb = ns.wandb
     H.wanddb_name = ns.wandb_name
     H.wandb_project = ns.wandb_project
