@@ -190,10 +190,7 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
     duration_accs = []
     token_accs = []
     
-    # NEW: Structure Integrity Check
     structure_accs = [] 
-
-    # NEW: Duration Error calculation for Octuple
     dur_diffs = [] 
     
     for gen, orig in zip(gen_masked, orig_masked):
@@ -271,7 +268,6 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
     metrics['infilled_count_error'] = np.mean(count_errors) if count_errors else None
     
     # Boundary coherence metrics
-    # Improved: check pitch/duration distance between last pre-mask event and first mask event
     pitch_smoothness = []
     rhythm_smoothness = []
     

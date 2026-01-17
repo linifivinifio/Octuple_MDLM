@@ -1128,7 +1128,6 @@ class POP909OctupleMelodyConverter(BaseNoteSequenceConverter):
 
         # 2. Convert MidiToolkit -> NoteSequence via Temporary File
         # We use a temp file because there is no direct bridge from miditoolkit -> NoteSequence
-        # delete=False is required to close the file before reading it back on some OSs (Windows)
         with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp:
             temp_name = tmp.name
         
@@ -1144,8 +1143,6 @@ class POP909OctupleMelodyConverter(BaseNoteSequenceConverter):
             
         except Exception as e:
             print(f"Error converting MIDI to NoteSequence for sample {i}: {e}")
-            # Append empty sequence on failure to keep alignment? 
-            # Or just skip. Here we return an empty sequence to prevent crashes.
             output_sequences.append(note_seq.NoteSequence())
             
         finally:

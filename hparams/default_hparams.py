@@ -96,7 +96,7 @@ class HparamsOctuple(HparamsAbsorbing):
     def __init__(self, parser):
         super().__init__(parser)
         
-        # time, tempo, bar, position, instrument/program, pitch, durration, velocity
+        # bar, position, instrument/program, pitch, duration, velocity, time, tempo
         self.codebook_size = (260, 132, 133, 132, 132, 36, 258, 53)
         self.latent_shape = (self.NOTES, 8)
 

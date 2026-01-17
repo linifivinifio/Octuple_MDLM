@@ -128,14 +128,12 @@ class AbsorbingDiffusion(Sampler):
 
         if current_strategy == 'mixed':
             # Randomly select a strategy from the pool
-            # Pool includes the 5 partial strategies AND 'random' (standard full masking)
             strategies = [
                 'bar_all',
                 'bar_attribute', 
                 'random'
             ]
             # Select one strategy for the entire batch (simplest implementation)
-            # OR per sample? Per batch is standard for training stability.
             current_strategy = strategies[np.random.randint(len(strategies))]
         
         # If 'random' is selected (either explicitly or via mixed), use standard q_sample
@@ -233,25 +231,6 @@ class AbsorbingDiffusion(Sampler):
              # Fallback or error usage
              raise ValueError(f"Unknown masking strategy: {self.masking_strategy}")
 
-        # Apply Time-dependence
-        # "on the maximum t (1024) the probability of masking ... is 100% and it decreases until t=0... is 0%"
-        # Effectively: Final_Mask = Candidate_Mask AND (Bernoulli(t/T))
-        
-        # Diffusion time gating (t/T), applied at the *unit* level.
-        # This preserves "mask simultaneously" within each (bar, attribute) unit.
-        gate = (torch.rand((b,), device=device) < time_prob).view(-1, 1, 1)
-
-        # Combine
-        mask = candidate_mask & gate
-
-        # Apply per-channel mask token
-        for i in range(len(self.mask_id)):
-            x_t[:, :, i][mask[:, :, i]] = self.mask_id[i]
-        
-        x_0_ignore[torch.bitwise_not(mask)] = -1
-        
-        return x_t, x_0_ignore, mask
-
     def _train_loss(self, x_0):
         x_0 = x_0.long()
         b, device = x_0.size(0), x_0.device
@@ -260,7 +239,6 @@ class AbsorbingDiffusion(Sampler):
         t, pt = self.sample_time(b, device, 'uniform')
 
         # make x noisy and denoise
-
         if self.masking_strategy is not None:
              x_t, x_0_ignore, mask = self.q_sample_partial(x_0=x_0, t=t)
         elif self.mask_schedule == 'random':
@@ -268,7 +246,6 @@ class AbsorbingDiffusion(Sampler):
         elif self.mask_schedule == 'fixed':
             x_t, x_0_ignore, mask = self.q_sample_mlm(x_0=x_0, t=t)
             
-        # --- FIX 1: Sanitize Input for Embeddings ---
         # The model cannot take -1 as an input index. We temporarily swap it to 0.
         # The attention mask (if used) or the loss mask will handle the rest.
         x_t_input = x_t.clone()
@@ -282,7 +259,7 @@ class AbsorbingDiffusion(Sampler):
                               for i, x in enumerate(x_0_hat_logits)]
         cross_entropy_loss_stack = torch.stack(cross_entropy_loss_per_channel)
 
-        # --- ENHANCEMENT: Structure Awareness & Channel Weighting ---
+        # --- ENHANCEMENT: Channel Weighting Option ---
         # Detect Octuple encoding (8 channels)
         is_octuple = (len(x_0_hat_logits) == 8)
         
@@ -301,7 +278,7 @@ class AbsorbingDiffusion(Sampler):
         else:
             cross_entropy_loss = cross_entropy_loss_stack.sum(0)
 
-        # --- ENHANCEMENT: Structure Regression Loss (Bar & Position) ---
+        # --- Test: Structure Regression Loss (Bar & Position) ---
         aux_loss = 0.0
         if is_octuple and self.monotonicity_loss:
             SCALE_FACTOR = 200.0
@@ -314,8 +291,6 @@ class AbsorbingDiffusion(Sampler):
             
             target_global = target_bar * SCALE_FACTOR + target_pos
 
-            # 2. PREPARE PREDICTIONS (Soft Argmax)
-            # Logits are likely (B, Vocab, T) based on CrossEntropy usage
             bar_logits = x_0_hat_logits[0] 
             pos_logits = x_0_hat_logits[1] 
             
@@ -331,7 +306,6 @@ class AbsorbingDiffusion(Sampler):
             
             expected_global = expected_bar * SCALE_FACTOR + expected_pos
 
-            # 3. CALCULATE LOSS
             mse_loss = F.mse_loss(expected_global, target_global, reduction='none')
             
             # Correct mask slicing as well

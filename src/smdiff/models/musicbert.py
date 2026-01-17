@@ -28,7 +28,6 @@ class MusicBERT(nn.Module):
         super(MusicBERT, self).__init__()
         self.config = config
         
-        # CHANGE: Use a ModuleList of 8 separate embeddings instead of one shared one
         self.element_embeddings = nn.ModuleList([
             nn.Embedding(config.vocab_sizes[i], config.element_embedding_size) 
             for i in range(8)

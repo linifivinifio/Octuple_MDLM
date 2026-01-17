@@ -6,13 +6,8 @@
 #SBATCH --partition=student 
 #SBATCH --account deep_learning
 
-# Initialize Conda (Assuming standard installation path, adjust if needed)
-# source $HOME/miniconda3/etc/profile.d/conda.sh
-# conda activate symbolic-music-discrete-diffusion
-
 # OR if using modules on the cluster:
 
-. /home/lziltener/jupyter/bin/activate
 source .venv/bin/activate
 nvidia-smi
 echo "Starting training job on $HOSTNAME"

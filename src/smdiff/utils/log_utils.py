@@ -226,24 +226,17 @@ def samples_2_noteseq(np_samples, tokenizer_id=None):
                 if tokenizer_id in ['melody', 'trio']:
                     max_val = 108 # HIGHEST MIDI TON IN MAGENTA PIPELINES FOR PIANO
                 
-                # 2. Dynamic check for other converters (like octuple)
-                elif hasattr(converter, 'input_depth'): 
-                    max_val = converter.input_depth - 1
-                elif hasattr(converter, '_vocab_size'):
-                    max_val = converter._vocab_size - 1
-                
                 # 3. Apply Clamp
                 if max_val is not None:
-                    # Identify out-of-bounds indices
                     mask = np_samples > max_val
                     if np.any(mask):
-                        # Clamp to max_val (usually 'Silence'/'No Event')
+                        # Clamp to 0
                         np_samples[mask] = 0
                 
                 return converter.from_tensors(np_samples)
             
             if is_octuple:
-                # Octuple Structure: [Bar, Pos, Inst, Pitch, Dur, Vel, Tempo, TimeSig]
+                # Octuple Structure: [Bar, Pos, Inst, Pitch, Dur, Vel, TimeSig, Tempo]
                 
                 #remove invalid pad tokens (-1)
                 # Convert 3D batch to a list of valid 2D sequences
@@ -252,8 +245,6 @@ def samples_2_noteseq(np_samples, tokenizer_id=None):
                     sample = np_samples[i]  # Shape: (Time, 8)
                     
                     # Create mask: True only for rows where NO subtoken is -1
-                    # (sample == -1).any(axis=1) finds rows with at least one -1
-                    # ~ inverts it to find rows with NO -1s
                     valid_rows = ~(sample == -1).any(axis=1)
                     
                     sample = sample[valid_rows]
@@ -267,10 +258,8 @@ def samples_2_noteseq(np_samples, tokenizer_id=None):
                         # For Trio: We expect Inst IDs 0, 1, 2 (Melody, Bridge, Piano)
                         # The model might predict 5, 99, etc. 
                         # We simply Modulo 3 to force them back into valid track IDs
-                        # OR clamp them. Modulo preserves variance better usually.
                         sample[:, 2] = sample[:, 2] % 3
                     
-                    # Append the clean, variable-length sample
                     cleaned_samples.append(sample)
 
                 return converter.from_tensors(cleaned_samples)

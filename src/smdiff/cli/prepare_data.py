@@ -176,7 +176,6 @@ def load_dataset(root_dir: str,
 
     print(f"Extracted {len(result)} sequences.")
     
-    # --- STRATEGY FIX: Chunking ---
     # We enforce a maximum length of 1024 here.
     # Longer sequences are split. Shorter sequences are left alone (padded at runtime).
     # This ensures Bar 0 is always the start of the first chunk.

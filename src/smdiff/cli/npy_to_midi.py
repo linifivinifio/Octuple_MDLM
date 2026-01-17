@@ -101,15 +101,9 @@ def main():
             
             print("Shape: ", samples.shape)
             
-
-            
             # Convert to NoteSequences
             # samples_2_noteseq handles the shape and registry lookup
             note_seqs = samples_2_noteseq(samples, tokenizer_id)
-            
-            # Save MIDI
-            # Create a subfolder for this step to keep things clean? 
-            # Or just flat files: step_200_0.mid, step_200_1.mid
             
             for i, ns in enumerate(note_seqs):
                 # We skip empty sequences to save space

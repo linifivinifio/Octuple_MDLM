@@ -153,7 +153,7 @@ def evaluate_unconditional(generated_samples, train_samples, is_octuple=True):
         
         return metrics
 
-    # OCTUPLE LOGIC (Original)
+    # OCTUPLE LOGIC
     gen_pch = pitch_class_histogram(generated_samples, pitch_idx=pitch_idx)
     train_pch = pitch_class_histogram(train_samples, pitch_idx=pitch_idx)
     metrics['pch_kl'] = kl_divergence(train_pch, gen_pch)
