@@ -80,6 +80,14 @@ def build_underlying_argv(cfg: Dict, ns: argparse.Namespace) -> List[str]:
     if loss_weights is not None:
         args += ["--loss_weights"] + [str(w) for w in loss_weights]
 
+    lr_scheduler = pick("lr_scheduler")
+    if lr_scheduler:
+        args += ["--lr_scheduler", str(lr_scheduler)]
+        
+    warmup_iters = pick("warmup_iters")
+    if warmup_iters is not None:
+        args += ["--warmup_iters", str(warmup_iters)]
+
     return args
 
 
@@ -102,6 +110,8 @@ def main():
     parser.add_argument("--dataset_path", type=str, default=None)
     parser.add_argument("--batch_size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument('--lr_scheduler', type=str, default=None, help='Learning rate scheduler (constant, cosine)')
+    parser.add_argument('--warmup_iters', type=int, default=None, help='Number of warmup steps')
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--bars", type=int, default=None)
     parser.add_argument("--tracks", type=str, default=None)

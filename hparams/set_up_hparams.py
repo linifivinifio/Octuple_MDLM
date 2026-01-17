@@ -32,6 +32,8 @@ def add_train_args(parser):
     parser.add_argument("--ema_beta", type=float, default=0.995)
     parser.add_argument("--load_optim", const=True, action="store_const", default=False)
     parser.add_argument("--lr", type=float)
+    parser.add_argument("--lr_scheduler", type=str, default='constant', help="Learning rate scheduler (constant, cosine)")
+    parser.add_argument("--warmup_iters", type=int, default=10000, help="Number of warmup steps")
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--steps_per_update_ema", type=int, default=10)
     parser.add_argument("--steps_per_log", type=int, default=10)
