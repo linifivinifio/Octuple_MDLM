@@ -1,3 +1,12 @@
+# TO-DO
+
+- [ ] Update Masking Strategy description in both README and registry file
+- [ ] Upload runs/ for each model
+- [x] Add a sentence to README on using existing weights in runs/ folder
+- [x] Add bar & positon in infilled metrics
+- [ ] generate a metrics overview table from all metrics files (same last training step run, same task)
+- [ ] generate bar charts per selected strategy to convey structure learning in paper easier.
+
 # Symbolic Music Discrete Diffusion
 
 A symbolic music generation framework based on absorbing state diffusion, supporting both grid-based and Octuple MIDI representations.
@@ -21,7 +30,7 @@ The original SchmuBERT implementation does not support this track distinction, s
 Registered in `src/smdiff/registry/models.py`:
 
 | Model ID | Architecture | Description |
-|----------|-------------|-------------|
+| ---------- | ------------- | ------------- |
 | `octuple_ddpm` | Absorbing Diffusion | DDPM for octuple encoding |
 | `octuple_mask_ddpm` | Absorbing Diffusion with masking strategies | DDPM for octuple  encoding |
 | `musicbert_ddpm`* | MusicBERT Transformer-Encoder + Absorbing Diffusion (Transformer) | DDPM for octuple  encoding |
@@ -106,6 +115,8 @@ runs/<model>_<tokenizer_id>_<masking_strategy>/
 ```
 
 ## Environment
+
+Existing weights can be found in the `runs` folder. Therefore, you might go ahead and run the evaluation scripts immediately. Evaluation will generate and save `*.mid` samples as well.
 
 ### Setup
 

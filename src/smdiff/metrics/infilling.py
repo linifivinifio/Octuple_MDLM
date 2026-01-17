@@ -188,10 +188,11 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
     # Reconstruction accuracy metrics (in masked region)
     pitch_accs = []
     duration_accs = []
+    bar_accs = []
+    pos_accs = []
     token_accs = []
     
     structure_accs = [] 
-    dur_diffs = [] 
     
     for gen, orig in zip(gen_masked, orig_masked):
         # SKIP if original region is empty (no ground truth)
@@ -201,9 +202,10 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
         if len(gen) == 0:
             pitch_accs.append(0.0)
             duration_accs.append(0.0)
+            bar_accs.append(0.0)
+            pos_accs.append(0.0)
             token_accs.append(0.0)
             if preserve_structure: structure_accs.append(0.0)
-            dur_diffs.append(np.sum(orig[:, duration_idx])) # Max error (missed everything)
         else:
             # Truncate to min length for comparison
             min_len = min(len(gen), len(orig))
@@ -216,32 +218,26 @@ def evaluate_infilling(generated_samples, original_samples, mask_start_step, mas
             d_acc = _duration_accuracy(g_trunc, o_trunc, duration_idx=duration_idx)
             duration_accs.append(d_acc)
             
+            b_acc = _bar_accuracy(g_trunc, o_trunc)
+            bar_accs.append(b_acc)
+            
+            p_acc = _pos_accuracy(g_trunc, o_trunc)
+            pos_accs.append(p_acc)
+            
             t_acc = _token_accuracy(g_trunc, o_trunc)
             token_accs.append(t_acc)
 
-            # --- ENHANCEMENT 1: Structure Integrity ---
             if preserve_structure:
                 # Check Bar (0) and Pos (1)
                 struct_match = (g_trunc[:, :2] == o_trunc[:, :2]).all(axis=1).sum()
                 structure_accs.append(100.0 * struct_match / min_len)
 
-
-            # Sum the Duration tokens (Index 4)
-            total_gen_dur = np.sum(g_trunc[:, duration_idx])
-            total_orig_dur = np.sum(o_trunc[:, duration_idx])
-            dur_diffs.append(abs(total_gen_dur - total_orig_dur))
-
-    
     metrics['pitch_accuracy'] = np.mean(pitch_accs) if pitch_accs else None
     metrics['duration_accuracy'] = np.mean(duration_accs) if duration_accs else None
+    metrics['bar_accuracy'] = np.mean(bar_accs) if bar_accs else None
+    metrics['position_accuracy'] = np.mean(pos_accs) if pos_accs else None
     metrics['token_accuracy'] = np.mean(token_accs) if token_accs else None
     
-    # Update Metrics Dict
-    if dur_diffs:
-        metrics['infilled_duration_total_error'] = np.mean(dur_diffs)
-    else:
-        metrics['infilled_duration_total_error'] = None
-
     if preserve_structure:
         metrics['structure_accuracy'] = np.mean(structure_accs) if structure_accs else None
     
@@ -333,6 +329,26 @@ def _pitch_accuracy(generated, original, pitch_idx=3):
     """Compute percentage of matching pitches."""
     gen_pitches = generated[:, pitch_idx]
     orig_pitches = original[:, pitch_idx]
+    
+    matches = (gen_pitches == orig_pitches).sum()
+    total = len(gen_pitches)
+    
+    return 100.0 * matches / total if total > 0 else 0.0
+
+def _bar_accuracy(generated, original, bar_idx=0):
+    """Compute percentage of matching pitches."""
+    gen_pitches = generated[:, bar_idx]
+    orig_pitches = original[:, bar_idx]
+    
+    matches = (gen_pitches == orig_pitches).sum()
+    total = len(gen_pitches)
+    
+    return 100.0 * matches / total if total > 0 else 0.0
+
+def _pos_accuracy(generated, original, pos_idx=1):
+    """Compute percentage of matching pitches."""
+    gen_pitches = generated[:, pos_idx]
+    orig_pitches = original[:, pos_idx]
     
     matches = (gen_pitches == orig_pitches).sum()
     total = len(gen_pitches)
