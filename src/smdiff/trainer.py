@@ -29,6 +29,10 @@ def main(H):
         H: Hyperparameters object with all training config
     """
 
+    # 1. DETECT DEVICE
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    log(f"Training on device: {device}")
+
     # --- DATA SETUP ---
     # Set seed for reproducibility before data splitting
     if hasattr(H, 'seed') and H.seed is not None:
@@ -70,9 +74,11 @@ def main(H):
         log(f'Training for {H.epochs} epochs = {H.train_steps} steps')
 
     # --- MODEL & OPTIMIZER ---
-    sampler = get_sampler(H).cuda()
+    log("Building model...")
+    # Fix: Replace .cuda() with .to(device)
+    sampler = get_sampler(H).to(device)        
     optim = torch.optim.Adam(sampler.parameters(), lr=H.lr)
-    scaler = torch.amp.GradScaler("cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=(device.type == 'cuda'))
 
     if H.ema:
         ema = EMA(H.ema_beta)
@@ -96,7 +102,7 @@ def main(H):
     # --- RESUME LOGIC ---
     if H.load_step > 0:
         start_step = H.load_step + 1
-        sampler = load_model(sampler, H.sampler, H.load_step, H.load_dir, [H.log_dir]).cuda()
+        sampler = load_model(sampler, H.sampler, H.load_step, H.load_dir, [H.log_dir]).to(device)
         log("Loaded model checkpoint")
         
         if H.ema:
@@ -141,7 +147,7 @@ def main(H):
         valid_loss, valid_elbo, num_batches = 0.0, 0.0, 0
         for x in tqdm(val_loader, desc="Validation", leave=False):
             with torch.no_grad():
-                stats = sampler.train_iter(x.cuda())
+                stats = sampler.train_iter(x.to(device))
                 valid_loss += stats['loss'].item()
                 if H.sampler == 'absorbing' and 'vb_loss' in stats:
                     valid_elbo += stats['vb_loss'].item()
@@ -287,9 +293,9 @@ def main(H):
 
         # 2. Train Step
         x = augment_note_tensor(H, next(train_iterator))
-        x = x.cuda(non_blocking=True)
+        x = x.to(device, non_blocking=(device.type == 'cuda'))
 
-        if H.amp:
+        if H.amp and device.type == 'cuda':
             optim.zero_grad()
             with torch.amp.autocast("cuda"):
                 stats = sampler.train_iter(x)

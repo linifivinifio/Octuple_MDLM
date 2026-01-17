@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional
 
-
 @dataclass(frozen=True)
 class ModelSpec:
     id: str
@@ -16,8 +15,8 @@ def _create_schmu_conv_vae(H):
     """Factory for Conv_Transformer VAE model."""
     from .models import ConVormer, AbsorbingDiffusion
     from torch.nn import DataParallel
-    denoise_fn = ConVormer(H).cuda()
-    denoise_fn = DataParallel(denoise_fn).cuda()
+    denoise_fn = ConVormer(H)
+    denoise_fn = DataParallel(denoise_fn)
     return AbsorbingDiffusion(H, denoise_fn, H.codebook_size)
 
 
@@ -25,8 +24,8 @@ def _create_schmu_tx_vae(H):
     """Factory for Transformer VAE model."""
     from .models import Transformer, AbsorbingDiffusion
     from torch.nn import DataParallel
-    denoise_fn = Transformer(H).cuda()
-    denoise_fn = DataParallel(denoise_fn).cuda()
+    denoise_fn = Transformer(H)
+    denoise_fn = DataParallel(denoise_fn)
     return AbsorbingDiffusion(H, denoise_fn, H.codebook_size)
 
 
@@ -34,8 +33,8 @@ def _create_octuple_ddpm(H):
     """Factory for Octuple DDPM model."""
     from .models import Transformer, AbsorbingDiffusion
     from torch.nn import DataParallel
-    denoise_fn = Transformer(H).cuda()
-    denoise_fn = DataParallel(denoise_fn).cuda()
+    denoise_fn = Transformer(H)
+    denoise_fn = DataParallel(denoise_fn)
     return AbsorbingDiffusion(H, denoise_fn, H.codebook_size)
 
 
@@ -43,8 +42,8 @@ def _create_octuple_mask_ddpm(H):
     """Factory for Octuple DDPM with masking."""
     from .models import Transformer, AbsorbingDiffusion
     from torch.nn import DataParallel
-    denoise_fn = Transformer(H).cuda()
-    denoise_fn = DataParallel(denoise_fn).cuda()
+    denoise_fn = Transformer(H)
+    denoise_fn = DataParallel(denoise_fn)
     return AbsorbingDiffusion(H, denoise_fn, H.codebook_size)
 
 
@@ -52,8 +51,8 @@ def _create_musicbert_ddpm(H):
     """Factory for MusicBERT DDPM model."""
     from .models import MusicBERTDiffusion, AbsorbingDiffusion
     from torch.nn import DataParallel
-    denoise_fn = MusicBERTDiffusion(H).cuda()
-    denoise_fn = DataParallel(denoise_fn).cuda()
+    denoise_fn = MusicBERTDiffusion(H)
+    denoise_fn = DataParallel(denoise_fn)
     return AbsorbingDiffusion(H, denoise_fn, H.codebook_size)
 
 

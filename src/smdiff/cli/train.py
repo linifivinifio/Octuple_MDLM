@@ -134,6 +134,7 @@ def main():
     parser.add_argument("--wandb", const=True, action="store_const", default=False, help="Enable WandB logging")
     parser.add_argument("--wandb_project", type=str, default="smdiff", help="WandB Project Name")
     parser.add_argument("--wandb_name", type=str, default=None, help="WandB Run Name")
+    parser.add_argument("--local", action="store_true", help="Force local run (ignore cluster detection)")
 
     ns = parser.parse_args()
 
@@ -178,7 +179,7 @@ def main():
     H.project_log_dir = os.path.abspath(project_run_dir)
     
     # 2. Define the Active Log Path (Scratch vs Home)
-    if is_cluster():
+    if is_cluster() and not ns.local:
         username = get_current_username()
         scratch_root = get_scratch_dir(username)
         # /work/scratch/user/runs/model_id
