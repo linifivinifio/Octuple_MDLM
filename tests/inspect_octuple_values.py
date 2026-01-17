@@ -9,7 +9,7 @@ from src.smdiff.metrics.common import duration_histogram, velocity_histogram
 
 try:
     # path = r"runs/samples_35000.npy"
-    path = r"runs\samples\samples_50000.npy"
+    path = r"runs/octuple_mask_ddpm_trio_octuple_sync_none/samples/samples_60000.npy"
     data = np.load(path, allow_pickle=True)
     
     print(f"Loaded {path}, shape {data.shape}")

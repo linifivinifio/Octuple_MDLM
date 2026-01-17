@@ -134,11 +134,14 @@ def main():
     parser.add_argument("--log_base_dir", type=str, default=None)
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--grad_acc", type=int, nargs='?', const=48, default=0, 
+                        help="Target effective batch size. If used as a flag (--grad_acc), defaults to 48. Can also set specific value (--grad_acc 96).")
     
     # wanDB
     parser.add_argument("--wandb", const=True, action="store_const", default=False, help="Enable WandB logging")
     parser.add_argument("--wandb_project", type=str, default="smdiff", help="WandB Project Name")
     parser.add_argument("--wandb_name", type=str, default=None, help="WandB Run Name")
+    parser.add_argument("--local", action="store_true", help="Force local run (ignore cluster detection)")
 
     ns = parser.parse_args()
 
@@ -183,7 +186,7 @@ def main():
     H.project_log_dir = os.path.abspath(project_run_dir)
     
     # 2. Define the Active Log Path (Scratch vs Home)
-    if is_cluster():
+    if is_cluster() and not ns.local:
         username = get_current_username()
         scratch_root = get_scratch_dir(username)
         # /work/scratch/user/runs/model_id
@@ -197,7 +200,8 @@ def main():
     H.tokenizer_id = tokenizer_id
     H.dataset_id = ns.dataset_id
     H.model_id = ns.model  # Store canonical model_id for registry lookup
-    
+    H.grad_acc = ns.grad_acc
+
     H.wandb = ns.wandb
     H.wanddb_name = ns.wandb_name
     H.wandb_project = ns.wandb_project

@@ -29,6 +29,10 @@ def main(H):
         H: Hyperparameters object with all training config
     """
 
+    # 1. DETECT DEVICE
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    log(f"Training on device: {device}")
+
     # --- DATA SETUP ---
     # Set seed for reproducibility before data splitting
     if hasattr(H, 'seed') and H.seed is not None:
@@ -70,9 +74,22 @@ def main(H):
         log(f'Training for {H.epochs} epochs = {H.train_steps} steps')
 
     # --- MODEL & OPTIMIZER ---
-    sampler = get_sampler(H).cuda()
+    log("Building model...")
+    sampler = get_sampler(H).to(device)        
     optim = torch.optim.Adam(sampler.parameters(), lr=H.lr)
-    scaler = torch.amp.GradScaler("cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=(device.type == 'cuda'))
+    
+    # --- GRADIENT ACCUMULATION SETUP ---
+    accum_steps = 1
+    if hasattr(H, 'grad_acc') and H.grad_acc > 0:
+        if H.grad_acc > H.batch_size:
+            accum_steps = H.grad_acc // H.batch_size
+            log(f"Gradient Accumulation enabled: Target BS={H.grad_acc}, Micro BS={H.batch_size} -> {accum_steps} accumulation steps.")
+        else:
+            log(f"Gradient Accumulation ignored: Target BS ({H.grad_acc}) <= Micro BS ({H.batch_size})")
+    
+    # Initialize gradients once before loop
+    optim.zero_grad()
 
     if H.ema:
         ema = EMA(H.ema_beta)
@@ -96,7 +113,7 @@ def main(H):
     # --- RESUME LOGIC ---
     if H.load_step > 0:
         start_step = H.load_step + 1
-        sampler = load_model(sampler, H.sampler, H.load_step, H.load_dir, [H.log_dir]).cuda()
+        sampler = load_model(sampler, H.sampler, H.load_step, H.load_dir, [H.log_dir]).to(device)
         log("Loaded model checkpoint")
         
         if H.ema:
@@ -141,7 +158,7 @@ def main(H):
         valid_loss, valid_elbo, num_batches = 0.0, 0.0, 0
         for x in tqdm(val_loader, desc="Validation", leave=False):
             with torch.no_grad():
-                stats = sampler.train_iter(x.cuda())
+                stats = sampler.train_iter(x.to(device))
                 valid_loss += stats['loss'].item()
                 if H.sampler == 'absorbing' and 'vb_loss' in stats:
                     valid_elbo += stats['vb_loss'].item()
@@ -287,26 +304,47 @@ def main(H):
 
         # 2. Train Step
         x = augment_note_tensor(H, next(train_iterator))
-        x = x.cuda(non_blocking=True)
+        x = x.to(device, non_blocking=(device.type == 'cuda'))
 
-        if H.amp:
-            optim.zero_grad()
+        # Helper to determine if we update weights this step
+        is_update_step = ((step + 1) % accum_steps == 0) or ((step + 1) == H.train_steps)
+        loss_scale = 1.0 / accum_steps
+
+        if H.amp and device.type == 'cuda':
+            # Remove optim.zero_grad() from here (moved to end of block)
             with torch.amp.autocast("cuda"):
                 stats = sampler.train_iter(x)
+                # Scale loss for accumulation
+                stats['loss'] = stats['loss'] * loss_scale
+            
             scaler.scale(stats['loss']).backward()
-            scaler.step(optim)
-            scaler.update()
+            
+            if is_update_step:
+                scaler.step(optim)
+                scaler.update()
+                scaler.unscale_(optim) # Optional: usually done automatically by step, but explicit for some schedulers
+                optim.zero_grad()
         else:
             stats = sampler.train_iter(x)
             if torch.isnan(stats['loss']).any():
                 log(f'Skipping step {step} with NaN loss')
+                # If we skip, we should probably zero grad to avoid polluting next accumulation, 
+                # but simplistic approach is just continue (potentially wastes partial grads)
+                optim.zero_grad() 
                 continue
-            optim.zero_grad()
+            
+            # Scale loss
+            stats['loss'] = stats['loss'] * loss_scale
+            
             stats['loss'].backward()
-            optim.step()
+            
+            if is_update_step:
+                optim.step()
+                optim.zero_grad()
 
         # 3. Record stats
-        loss_val = stats['loss'].item()
+        # Un-scale loss for logging so it looks normal to the human eye
+        loss_val = stats['loss'].item() * accum_steps
         current_losses_buffer.append(loss_val)
         history['losses'].append(loss_val) 
         
@@ -315,8 +353,10 @@ def main(H):
             current_vb_losses_buffer.append(vb_val)
             history['elbo'].append(vb_val)
 
-        if H.ema and step % H.steps_per_update_ema == 0 and step > 0:
-            ema.update_model_average(ema_sampler, sampler)
+        # Update EMA only when the model weights actually changed
+        if is_update_step and H.ema and step > 0:
+            if step % H.steps_per_update_ema == 0:
+                ema.update_model_average(ema_sampler, sampler)
 
         # 4. Periodic Actions
         if step % H.steps_per_log == 0:
