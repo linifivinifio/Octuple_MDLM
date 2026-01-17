@@ -33,7 +33,8 @@ python3 -m smdiff.cli.evaluate_trio \
   --model "${MODEL_ID}" \
   --load_dir "${RUN_DIR}" \
   --batch_size 4 \
-  --tracks trio
+  --tracks trio \
+  --load_step 81200
 
 echo "========================================"
 echo "Infilling evaluation"
@@ -47,6 +48,7 @@ python3 -m smdiff.cli.evaluate_trio \
   --batch_size 4 \
   --mask_token_start 256 \
   --mask_token_end 512 \
-  --tracks trio
+  --tracks trio \
+  --load_step 81200
 
 echo "Job finished at $(date)"
