@@ -1,0 +1,14 @@
+| Metric | octuple_ddpm_trio_octuple | octuple_mask_ddpm_trio_octuple_mixed |
+| --- | --- | --- |
+| boundary_matches_pct | 100.0000 | 100.0000 |
+| boundary_pitch_smoothness | 10.4100 | 11.7400 |
+| boundary_rhythm_smoothness | 8.8200 | 7.3300 |
+| duration_accuracy | 5.1523 | 5.4766 |
+| infilled_count_error | 0.0000 | 0.0000 |
+| infilled_duration_total_error | 508.3900 | 357.4800 |
+| infilled_pch_kl | 0.0045 | 0.0218 |
+| pitch_accuracy | 5.2969 | 4.8320 |
+| pitch_range_mean | 54.3300 | 54.6400 |
+| sample_diversity | 386.2286 | 374.2921 |
+| token_accuracy | 0.0000 | 0.0000 |
+| valid_samples_pct | 100.0000 | 100.0000 |

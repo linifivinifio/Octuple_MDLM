@@ -1,0 +1,14 @@
+| Metric | octuple_mask_ddpm_trio_octuple_bar_all | octuple_mask_ddpm_trio_octuple_bar_attribute | octuple_mask_ddpm_trio_octuple_sync_bar | octuple_mask_ddpm_trio_octuple_sync_bar_position |
+| --- | --- | --- | --- | --- |
+| boundary_matches_pct | 99.0000 | 3.0000 | 100.0000 | 100.0000 |
+| boundary_pitch_smoothness | 12.7475 | 9.3333 | 6.5000 | 6.1500 |
+| boundary_rhythm_smoothness | 9.0404 | 5.3333 | 6.1800 | 6.8800 |
+| duration_accuracy | 5.3984 | 5.9609 | 6.4375 | 6.2617 |
+| infilled_count_error | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
+| infilled_duration_total_error | None | None | None | None |
+| infilled_pch_kl | 0.0078 | 0.0129 | 0.0090 | 0.0066 |
+| pitch_accuracy | 4.4102 | 5.4453 | 5.3711 | 5.3945 |
+| pitch_range_mean | 63.1900 | 52.0900 | 53.0900 | 53.1300 |
+| sample_diversity | 378.2358 | 384.4063 | 387.9706 | 387.9005 |
+| token_accuracy | 0.0000 | 0.0000 | 0.0156 | 0.0039 |
+| valid_samples_pct | 99.0000 | 100.0000 | 100.0000 | 100.0000 |

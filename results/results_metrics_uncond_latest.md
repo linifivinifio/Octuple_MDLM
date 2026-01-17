@@ -1,0 +1,10 @@
+| Metric | octuple_ddpm_trio_octuple | octuple_mask_ddpm_trio_octuple_mixed |
+| --- | --- | --- |
+| duration_kl | 0.1435 | 0.0447 |
+| note_density_kl | 0.4188 | 0.3240 |
+| pch_kl | 0.1071 | 0.3215 |
+| pitch_range_mean | 73.5500 | 58.7100 |
+| sample_diversity | 153.8754 | 144.5952 |
+| self_similarity | 0.9485 | 0.9680 |
+| valid_samples_pct | 100.0000 | 100.0000 |
+| velocity_kl | 0.1253 | 0.1709 |
