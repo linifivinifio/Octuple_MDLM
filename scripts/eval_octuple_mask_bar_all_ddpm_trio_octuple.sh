@@ -32,7 +32,8 @@ python3 -m smdiff.cli.evaluate_octuple \
   --model "${MODEL_ID}" \
   --load_dir "${RUN_DIR}" \
   --n_samples 100 \
-  --batch_size 4
+  --batch_size 4 \
+  --load_step 63000
 
 echo "========================================"
 echo "Infilling evaluation"
@@ -46,6 +47,7 @@ python3 -m smdiff.cli.evaluate_octuple \
   --input_midi_dir "${INFILL_MIDI_DIR}" \
   --batch_size 4 \
   --mask_token_start 256 \
-  --mask_token_end 512
+  --mask_token_end 512 \
+  --load_step 63000
 
 echo "Job finished at $(date)"
