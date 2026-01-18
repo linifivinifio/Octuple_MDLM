@@ -1,12 +1,3 @@
-# TO-DO
-
-- [ ] Update Masking Strategy description in both README and registry file
-- [ ] Upload runs/ for each model
-- [x] Add a sentence to README on using existing weights in runs/ folder
-- [x] Add bar & positon in infilled metrics
-- [ ] generate a metrics overview table from all metrics files (same last training step run, same task)
-- [ ] generate bar charts per selected strategy to convey structure learning in paper easier.
-
 # Symbolic Music Discrete Diffusion
 
 A symbolic music generation framework based on absorbing state diffusion, supporting both grid-based and Octuple MIDI representations.
@@ -31,11 +22,11 @@ Registered in `src/smdiff/registry/models.py`:
 
 | Model ID | Architecture | Description |
 | ---------- | ------------- | ------------- |
-| `octuple_ddpm` | Absorbing Diffusion | DDPM for octuple encoding |
-| `octuple_mask_ddpm` | Absorbing Diffusion with masking strategies | DDPM for octuple  encoding |
-| `musicbert_ddpm`* | MusicBERT Transformer-Encoder + Absorbing Diffusion (Transformer) | DDPM for octuple  encoding |
-| `schmu_tx_vae` | Transformer VAE + Absorbing Diffusion | Grid-based transformer VAE |
-| `schmu_conv_vae` | Convolutional VAE + Absorbing Diffusion | Grid-based conv VAE |
+| `octuple_ddpm` | Absorbing Diffusion | D3PM for octuple encoding |
+| `octuple_mask_ddpm` | Absorbing Diffusion with masking strategies | D3PM for octuple encoding |
+| `musicbert_ddpm`* | MusicBERT Transformer-Encoder + Absorbing Diffusion | D3PM for octuple encoding |
+| `schmu_tx` | Transformer + Absorbing Diffusion | Grid-based transformer |
+| `schmu_conv` | Convolutional Transformer + Absorbing Diffusion | Grid-based conv |
 
 \* The MusicBERT transformer-encoder must be pretrained on the same dataset. Use `scripts\run_musicBERT_pre_training.sh`. It does not support logging to wanDB.
 
@@ -76,11 +67,13 @@ Registered in `src/smdiff/masking/registry.py`:
 | Strategy | Description |
 | -------- | ----------- |
 | `random` | Token-level masking: mask whole token (all channels) at random positions. |
-| `bar_all` | Dynamic bar-level masking: masks K bars where K is proportional to t/T. Implementation masks attributes {pitch,duration,velocity,tempo}. K scales linearly with timestep. |
-| `bar_attribute` | Dynamic attribute-level masking: masks K (bar, attribute) pairs where K is proportional to t/T. Attribute is chosen from {pitch,duration,velocity,tempo}. K scales linearly with timestep. |
-| `mixed` | Randomly choose one masking strategy per batch (includes 'random'). |
-| `sync_bar` | Dynamic attribute-level masking: masks K (bar, attribute) pairs where K is proportional to t/T, extend logic to bars. Attribute is chosen from {pitch,duration,velocity,tempo}. K scales linearly with timestep. |
-| `sync_bar_position` | Dynamic attribute-level masking: masks K (bar, attribute) pairs where K is proportional to t/T, extend logic to bars & position. Attribute is chosen from {pitch,duration,velocity,tempo}. K scales linearly with timestep. |
+| `bar_all` | Dynamic bar-level masking: Selects a bar and masks all token within that bar. |
+| `bar_attribute` | Dynamic attribute-level masking: Selects (bar, attribute) pairs, and masks the attribute accross the whole bar. |
+| `mixed` | Randomly choose one masking strategy per batch (includes `random`, `bar_attribute`, `bar_all`). |
+| `sync_bar` | Dynamic attribute-level masking: Masks the `bar` token in 16-bar continous chunks; additionally applies `bar_attribute` strategy to all remaining attributes. |
+| `sync_bar_position` | Dynamic attribute-level masking: Dynamic attribute-level masking: Masks the `bar` & `position` token in 16-bar continous chunks; additionally applies `bar_attribute` strategy to all remaining attributes. |
+
+A diffusion process makes sure masking occurs linearly in time, such that by the last step, everything is masked. For the `random` strategy, the number of tokens is linearly interpolated over time, for all other strategies, the number of `bars` is linearly interpolated over time.
 
 ## Codebase
 
@@ -113,6 +106,29 @@ runs/<model>_<tokenizer_id>_<masking_strategy>/
 │   └── *.pt
 └── logs/                    # Training logs
 ```
+
+### Existing weights and run data
+
+We make the weights, metrics and run outputs used for our investigtion available under the following link: [Polybox](https://polybox.ethz.ch/index.php/s/LzrHe9TtzYf2EE7) (15GB).
+
+#### Quick Start
+
+1. Download the data, extract the runs folder to the project directory, such that the folder structure described earlier is preserved.
+2. [prepare the training/reference datasets](#preparing-the-data) using the tokenizer `trio_octuple` and `trio`
+3. [Run the evaluation scripts](#evaluating-the-models) for the specified tokenizer.
+4. Run `visualize_samples.py` and/or `parse_metrics.py` to generate the metrics tables or plots as follows:
+
+```bash
+python .\src\smdiff\cli\parse_metrics.py --task [infill|uncond] --load_step [best|latest]
+```
+
+_latest_ grabs all metrics files from the `run\**\metrics` directory with latest training step. _best_ grabs all files in the metrics subfolder with the best training step.
+
+```bash
+python .\src\smdiff\cli\visualize_samples.py --mode [seq|hist] --models octuple_mask_ddpm_trio_octuple_bar_attribute octuple_mask_ddpm_trio_octuple_sync_bar octuple_mask_ddpm_trio_octuple_sync_bar_position
+```
+
+_hist_ generates various histograms for `octuple`-based models, and _seq_ generates plots to validate the learned sequential bar structure of music. `--models` specifies all models that should be taken into account by their folder name in the `runs` directory.
 
 ## Environment
 
@@ -174,7 +190,7 @@ python src/smdiff/cli/train.py \
 To inspect training progress, next to train/val loss logging, the model generates samples in `npy` format every `steps_per_sample`. To convert these to `mid` files, run `npy_to_midi.py` and specify the run directory. The output will be saved in a `midi` subfolder within the `runs/<model>_<tokenizer>_<strategy>/samples` folder.
 
 ```bash
-python -m src.smdiff.cli.npy_to_midi --run_dir runs/schmu_conv_vae_trio
+python -m src.smdiff.cli.npy_to_midi --run_dir runs/schmu_conv_trio
 ```
 
 ### Evaluating the models

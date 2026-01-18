@@ -53,11 +53,12 @@ runs/
 *.pth
 *.pt
 
+# keep pretrained musicbert weights in place as they are in a quite clandestine location ;)
+!musicbert_latest.pth
+
 ##############################################
 # Data artifacts (generated)
 ##############################################
-data/processed/
-data/octuple/
 *.npy
 
 ##############################################

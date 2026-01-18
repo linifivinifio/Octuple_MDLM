@@ -1,14 +1,18 @@
-| Metric | octuple_ddpm_trio_octuple | octuple_mask_ddpm_trio_octuple_mixed |
-| --- | --- | --- |
-| boundary_matches_pct | 100.0000 | 100.0000 |
-| boundary_pitch_smoothness | 10.4100 | 11.7400 |
-| boundary_rhythm_smoothness | 8.8200 | 7.3300 |
-| duration_accuracy | 5.1523 | 5.4766 |
-| infilled_count_error | 0.0000 | 0.0000 |
-| infilled_duration_total_error | 508.3900 | 357.4800 |
-| infilled_pch_kl | 0.0045 | 0.0218 |
-| pitch_accuracy | 5.2969 | 4.8320 |
-| pitch_range_mean | 54.3300 | 54.6400 |
-| sample_diversity | 386.2286 | 374.2921 |
-| token_accuracy | 0.0000 | 0.0000 |
-| valid_samples_pct | 100.0000 | 100.0000 |
+| Metric | musicbert_ddpm_trio_octuple | musicbert_ddpm_trio_octuple_bar_attribute | musicbert_ddpm_trio_octuple_sync_bar | musicbert_ddpm_trio_octuple_sync_bar_position | octuple_ddpm_trio_octuple | octuple_mask_ddpm_trio_octuple_bar_all | octuple_mask_ddpm_trio_octuple_bar_attribute | octuple_mask_ddpm_trio_octuple_mixed | octuple_mask_ddpm_trio_octuple_sync_bar | octuple_mask_ddpm_trio_octuple_sync_bar_position | schmu_conv_vae_trio | schmu_tx_vae_trio |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| bar_accuracy | 1.4180 | 2.2148 | 2.5625 | 2.5742 | None | 2.2500 | 47.2852 | None | 29.9805 | 30.1445 | None | None |
+| boundary_matches_pct | 98.0000 | 100.0000 | 100.0000 | 100.0000 | 100.0000 | 100.0000 | 4.0000 | 100.0000 | 100.0000 | 100.0000 | None | None |
+| boundary_pitch_smoothness | 12.6020 | 8.2500 | 8.7000 | 7.8000 | 10.4100 | 11.5900 | 10.7500 | 11.7400 | 6.0300 | 6.2700 | 5.8360 | 8.2800 |
+| boundary_rhythm_smoothness | 12.1837 | 8.7100 | 10.0800 | 8.9200 | 8.8200 | 8.6100 | 3.0000 | 7.3300 | 5.8400 | 7.8400 | None | None |
+| correct_was_zero_pct | None | None | None | None | None | None | None | None | None | None | 92.4440 | 93.0997 |
+| duration_accuracy | 4.8672 | 5.5352 | 5.3906 | 5.4727 | 5.1523 | 5.9727 | 6.0977 | 5.4766 | 6.3359 | 6.3047 | None | None |
+| infilled_count_error | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 74.5238 | 42.0595 |
+| infilled_duration_total_error | None | None | None | None | 508.3900 | None | None | 357.4800 | None | None | 70.7500 | 66.7976 |
+| infilled_pch_kl | 0.0126 | 0.0072 | 0.0052 | 0.0073 | 0.0045 | 0.0105 | 0.0112 | 0.0218 | 0.0081 | 0.0059 | 0.0100 | 0.0147 |
+| nonzero_token_accuracy | None | None | None | None | None | None | None | None | None | None | 10.1881 | 6.5533 |
+| pitch_accuracy | 4.3789 | 4.6680 | 4.6992 | 4.4883 | 5.2969 | 4.6523 | 5.5273 | 4.8320 | 5.5156 | 5.4297 | 47.7369 | 40.5227 |
+| pitch_range_mean | 69.6100 | 57.6000 | 57.1900 | 56.4600 | 54.3300 | 54.3500 | 52.1500 | 54.6400 | 52.8000 | 53.5100 | 51.1548 | 63.9881 |
+| position_accuracy | 4.7109 | 7.2422 | 7.0938 | 6.6992 | None | 5.8633 | 8.5742 | None | 7.4570 | 5.9141 | None | None |
+| sample_diversity | 371.4141 | 379.5028 | 377.6049 | 379.5569 | 386.2286 | 373.7908 | 385.0893 | 374.2921 | 387.9051 | 387.9395 | 0.8936 | 0.8634 |
+| token_accuracy | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0039 | 47.7369 | 40.5227 |
+| valid_samples_pct | 97.0000 | 100.0000 | 100.0000 | 100.0000 | 100.0000 | 100.0000 | 100.0000 | 100.0000 | 100.0000 | 100.0000 | 100.0000 | 100.0000 |

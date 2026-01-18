@@ -100,7 +100,7 @@ def main():
     parser.add_argument("--set", action="append", default=[],
                         help="Override config keys, e.g. --set lr=1e-4 --set batch_size=8")
     parser.add_argument("--model", required=True, type=str,
-                        help="Model id: schmu_conv_vae | schmu_tx_vae | octuple_ddpm | octuple_mask_ddpm | musicbert_ddpm")
+                        help="Model id: schmu_conv | schmu_tx | octuple_ddpm | octuple_mask_ddpm | musicbert_ddpm")
     parser.add_argument("--dataset_id", type=str, default=None,
                         help="Dataset id from DATASET_REGISTRY (e.g., pop909_melody, pop909_octuple)")
     parser.add_argument("--strategy", type=str, default=None,

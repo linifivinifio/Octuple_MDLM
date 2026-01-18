@@ -11,8 +11,8 @@ class ModelSpec:
     notes: Optional[str] = None
 
 
-def _create_schmu_conv_vae(H):
-    """Factory for Conv_Transformer VAE model."""
+def _create_schmu_conv(H):
+    """Factory for Conv_Transformer model."""
     from .models import ConVormer, AbsorbingDiffusion
     from torch.nn import DataParallel
     denoise_fn = ConVormer(H)
@@ -20,8 +20,8 @@ def _create_schmu_conv_vae(H):
     return AbsorbingDiffusion(H, denoise_fn, H.codebook_size)
 
 
-def _create_schmu_tx_vae(H):
-    """Factory for Transformer VAE model."""
+def _create_schmu_tx(H):
+    """Factory for Transformer model."""
     from .models import Transformer, AbsorbingDiffusion
     from torch.nn import DataParallel
     denoise_fn = Transformer(H)
@@ -58,18 +58,18 @@ def _create_musicbert_ddpm(H):
 
 # Canonical model IDs and mapping to current internal model strings
 MODEL_REGISTRY: Dict[str, ModelSpec] = {
-    # SchmuBERT (VAE-based) variants
-    "schmu_conv_vae": ModelSpec(
-        id="schmu_conv_vae",
+    # SchmuBERT variants
+    "schmu_conv": ModelSpec(
+        id="schmu_conv",
         internal_model="conv_transformer",
-        description="Conv_Transformer (VAE-based SchmuBERT)",
-        factory=_create_schmu_conv_vae,
+        description="Conv_Transformer (SchmuBERT)",
+        factory=_create_schmu_conv,
     ),
-    "schmu_tx_vae": ModelSpec(
-        id="schmu_tx_vae",
+    "schmu_tx": ModelSpec(
+        id="schmu_tx",
         internal_model="transformer",
-        description="Transformer (VAE-based SchmuBERT)",
-        factory=_create_schmu_tx_vae,
+        description="Transformer (SchmuBERT)",
+        factory=_create_schmu_tx,
     ),
 
     # Octuple discrete diffusion
