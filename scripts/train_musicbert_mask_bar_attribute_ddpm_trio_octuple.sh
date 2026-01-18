@@ -25,6 +25,7 @@ python3 src/smdiff/cli/train.py \
   --steps_per_eval 1000 \
   --steps_per_sample 5000 \
   --steps_per_checkpoint 5000 \
+  --strategy bar_attribute \
   --seed 67 \
   --wandb \
   --wandb_project "octubert-music" \
