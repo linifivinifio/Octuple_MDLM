@@ -16,8 +16,8 @@ export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
 mkdir -p logs
 nvidia-smi || true
 
-MODEL_ID="schmu_tx_vae"
-RUN_DIR="runs/schmu_tx_vae_trio"
+MODEL_ID="schmu_tx"
+RUN_DIR="runs/schmu_tx_trio"
 
 # Infilling: 50 MIDI files × 2 regions = 100 samples
 INFILL_MIDI_DIR="data/test/POP909"

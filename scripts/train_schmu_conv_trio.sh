@@ -17,7 +17,7 @@ mkdir -p logs
 nvidia-smi || true
 
 python3 src/smdiff/cli/train.py \
-  --model schmu_conv_vae \
+  --model schmu_conv \
   --dataset_id pop909_trio \
   --batch_size 4 \
   --epochs 100 \
@@ -28,6 +28,6 @@ python3 src/smdiff/cli/train.py \
   --seed 67 \
   --wandb \
   --wandb_project "octubert-music" \
-  --wandb_name "schmu-conv-vae-trio"
+  --wandb_name "schmu-conv-trio"
 
 echo "Job finished at $(date)"
