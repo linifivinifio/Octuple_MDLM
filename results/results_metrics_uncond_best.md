@@ -1,10 +1,10 @@
-| Metric | octuple_mask_ddpm_trio_octuple_bar_all | octuple_mask_ddpm_trio_octuple_bar_attribute | octuple_mask_ddpm_trio_octuple_sync_bar | octuple_mask_ddpm_trio_octuple_sync_bar_position |
-| --- | --- | --- | --- | --- |
-| duration_kl | 0.0433 | 0.0221 | 0.0099 | 0.0025 |
-| note_density_kl | 0.2271 | 0.2152 | 0.1069 | 0.1547 |
-| pch_kl | 0.7419 | 0.0223 | 0.0106 | 0.0046 |
-| pitch_range_mean | 68.3500 | 51.6200 | 56.2600 | 57.5000 |
-| sample_diversity | 131.1719 | 416.4905 | 387.8399 | 388.2496 |
-| self_similarity | 0.9523 | 0.9718 | 0.9646 | 0.9638 |
-| valid_samples_pct | 97.0000 | 100.0000 | 100.0000 | 100.0000 |
-| velocity_kl | 0.3998 | 0.0668 | 0.0511 | 0.0079 |
+| Metric | octuple_mask_ddpm_trio_octuple_bar_all | octuple_mask_ddpm_trio_octuple_sync_bar | octuple_mask_ddpm_trio_octuple_sync_bar_position |
+| --- | --- | --- | --- |
+| duration_kl | 0.0433 | 0.0099 | 0.0025 |
+| note_density_kl | 0.2271 | 0.1069 | 0.1547 |
+| pch_kl | 0.7419 | 0.0106 | 0.0046 |
+| pitch_range_mean | 68.3500 | 56.2600 | 57.5000 |
+| sample_diversity | 131.1719 | 387.8399 | 388.2496 |
+| self_similarity | 0.9523 | 0.9646 | 0.9638 |
+| valid_samples_pct | 97.0000 | 100.0000 | 100.0000 |
+| velocity_kl | 0.3998 | 0.0511 | 0.0079 |
