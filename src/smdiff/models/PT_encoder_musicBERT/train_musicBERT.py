@@ -13,7 +13,7 @@ import torch.nn as nn
 import os
 import sys
 import numpy as np
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, random_split
 import torch.nn.functional as F
 from torch.optim import Adam
 
@@ -28,8 +28,8 @@ from smdiff.data.musicbert import MusicBERTDataset
 
 # %%
 # Configuration
-TARGET_BATCH_SIZE = 256 # The effective batch size we want to simulate
-BATCH_SIZE = 32 # Micro-batch size: Small enough to fit in GPU memory (Try 8 or 16)
+TARGET_BATCH_SIZE = 6 # The effective batch size we want to simulate
+BATCH_SIZE = 6 # Micro-batch size: Small enough to fit in GPU memory (Try 8 or 16)
 GRAD_ACCUM_STEPS = TARGET_BATCH_SIZE // BATCH_SIZE # Number of steps to accumulate
 
 MAX_SEQ_LEN = 1024
@@ -46,11 +46,21 @@ DATA_PATH = os.path.abspath(os.path.join(current_dir, '../../../../data/POP909_t
 if not os.path.exists(DATA_PATH):
     print(f"Warning: {DATA_PATH} does not exist. Please check the path.")
 else:
-    dataset = MusicBERTDataset(DATA_PATH, max_seq_len=MAX_SEQ_LEN, vocab_sizes=VOCAB_SIZES)
-    print(f"Dataset size: {len(dataset)}")
+    full_dataset = MusicBERTDataset(DATA_PATH, max_seq_len=MAX_SEQ_LEN, vocab_sizes=VOCAB_SIZES)
+    print(f"Dataset size: {len(full_dataset)}")
 
-    # Create DataLoader
-    train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+    # 1. Split Dataset into Train and Validation (e.g., 90/10 split)
+    val_size = int(len(full_dataset) * 0.1)
+    train_size = len(full_dataset) - val_size
+    
+    # Set generator for reproducible splits
+    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(67))
+    
+    print(f"Train size: {len(train_dataset)}, Validation size: {len(val_dataset)}")
+
+    # Create DataLoaders
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
 
 # %%
 # Model Configuration
@@ -80,8 +90,8 @@ print(model)
 
 # %%
 # Training Configuration
-TOTAL_STEPS = 1250*3
-WARMUP_STEPS = 250*3
+TOTAL_STEPS = 125000
+WARMUP_STEPS = 25000
 PEAK_LR = 5e-4
 WEIGHT_DECAY = 0.01
 BETAS = (0.9, 0.98)
@@ -124,6 +134,7 @@ if 'train_loader' in locals():
         # Training Loop
         model.train()
         global_step = 0
+        best_val_loss = float('inf') # Initialize best loss tracker
         optimizer.zero_grad() # Initialize gradients
         
         for epoch in range(num_epochs):
@@ -170,13 +181,42 @@ if 'train_loader' in locals():
                     if global_step >= TOTAL_STEPS:
                         break
             
-            # Calculate average loss over the number of micro-batches
-            avg_epoch_loss = epoch_loss / len(train_loader)
-            print(f"Epoch {epoch+1} completed. Avg Loss: {avg_epoch_loss:.4f}")
+            # --- VALIDATION LOOP ---
+            print(f"Running Validation for Epoch {epoch+1}...")
+            model.eval()
+            val_loss_sum = 0
+            with torch.no_grad():
+                for batch in val_loader:
+                    input_ids = batch['input_ids'].to(device)
+                    labels = batch['labels'].to(device)
+                    attention_mask = batch['attention_mask'].to(device)
+                    
+                    logits_list = model(input_ids, attention_mask=attention_mask)
+                    
+                    batch_loss = 0
+                    for i in range(8):
+                        vocab_size = VOCAB_SIZES[i]
+                        output_flat = logits_list[i].view(-1, vocab_size)
+                        target_flat = labels[:, :, i].reshape(-1)
+                        batch_loss += criterion(output_flat, target_flat)
+                    
+                    val_loss_sum += batch_loss.item()
             
-            # Save model weights
+            avg_train_loss = epoch_loss / len(train_loader)
+            avg_val_loss = val_loss_sum / len(val_loader)
+            
+            print(f"Epoch {epoch+1} Results:")
+            print(f"  Train Loss: {avg_train_loss:.4f}")
+            print(f"  Val   Loss: {avg_val_loss:.4f}")
+            
+            # Save best model based on validation loss
+            if avg_val_loss < best_val_loss: 
+                best_val_loss = avg_val_loss
+                torch.save(model.state_dict(), 'logs/checkpoints/musicbert_best.pth')
+                print(f"  >> New Model Saved (Best Val Loss: {best_val_loss:.4f})")
+
+            # Save latest weights
             torch.save(model.state_dict(), CHECKPOINT_PATH)
-            print(f"Model weights saved to {CHECKPOINT_PATH}")
             
             if global_step >= TOTAL_STEPS:
                 print("Reached total training steps.")
@@ -184,7 +224,3 @@ if 'train_loader' in locals():
 
     else:
         print("Train loader is empty.")
-else:
-    print("Train loader not defined.")
-
-
