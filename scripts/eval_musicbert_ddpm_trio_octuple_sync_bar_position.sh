@@ -17,7 +17,7 @@ mkdir -p logs
 nvidia-smi || true
 
 MODEL_ID="musicbert_ddpm"
-RUN_DIR="runs/musicbert_ddpm_trio_octuple"
+RUN_DIR="runs/musicbert_ddpm_trio_octuple_sync_bar_position"
 
 # Infilling: 50 MIDI files × 2 regions = 100 samples
 INFILL_MIDI_DIR="data/test/POP909"
