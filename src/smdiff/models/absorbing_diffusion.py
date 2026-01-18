@@ -289,8 +289,8 @@ class AbsorbingDiffusion(Sampler):
             # Mask specific attributes in specific bars.
             
             bar_indices = x_0[:, :, 0]
-            # Attributes: Bar(0), Position(1), Pitch(3), Duration(4), Velocity(5), Tempo(7)
-            target_attributes = torch.tensor([0, 1, 3, 4, 5, 7], device=device)
+            # target all attributes
+            target_attributes = torch.arange(0, 8, device=device)
             num_attrs = len(target_attributes)
             
             for i in range(b):
