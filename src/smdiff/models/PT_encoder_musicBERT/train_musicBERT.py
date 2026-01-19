@@ -90,8 +90,9 @@ print(model)
 
 # %%
 # Training Configuration
-TOTAL_STEPS = 125000
-WARMUP_STEPS = 25000
+factor = BATCH_SIZE / TARGET_BATCH_SIZE
+TOTAL_STEPS = 125000*factor
+WARMUP_STEPS = 25000*factor
 PEAK_LR = 5e-4
 WEIGHT_DECAY = 0.01
 BETAS = (0.9, 0.98)
