@@ -1,13 +1,3 @@
-# %% [markdown]
-# <!-- ![alt text](modelstructure.png "model-structure") -->
-# <!-- ![alt text](modelstructure.png "model-structure") -->
-# 
-# <p align="center">
-#   <img src="modelstructure.png" alt="model-structure">
-# </p>
-
-# %%
-# all import statements
 import torch
 import torch.nn as nn
 import os
@@ -26,7 +16,6 @@ if src_path not in sys.path:
 from smdiff.models.musicbert import MusicBERT, MusicBERTConfig
 from smdiff.data.musicbert import MusicBERTDataset
 
-# %%
 # Configuration
 TARGET_BATCH_SIZE = 6 # The effective batch size we want to simulate
 BATCH_SIZE = 6 # Micro-batch size: Small enough to fit in GPU memory (Try 8 or 16)
@@ -62,7 +51,6 @@ else:
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
 
-# %%
 # Model Configuration
 config = MusicBERTConfig(
     vocab_sizes=VOCAB_SIZES,
@@ -82,13 +70,6 @@ model = MusicBERT(config).to(device)
 
 print(model)
 
-# %%
-
-
-# %% [markdown]
-# # Training 
-
-# %%
 # Training Configuration
 factor = BATCH_SIZE / TARGET_BATCH_SIZE
 TOTAL_STEPS = 125000*factor
