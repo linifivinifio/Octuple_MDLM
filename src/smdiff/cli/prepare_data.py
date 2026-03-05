@@ -69,6 +69,7 @@ def _make_converter(tokenizer_id: str, bars: int, max_t_per_ns: int, strict_temp
         raise ValueError(f"Tokenizer '{tokenizer_id}' not supported for MIDI extraction.")
 
 
+# 1. Update the worker function to do the chunking
 def process_midi_file(args):
     """Worker function for processing a single MIDI file."""
     midi_path, tokenizer_id, bars, max_t_per_ns, strict_tempo = args
@@ -83,14 +84,22 @@ def process_midi_file(args):
             ns = midi_to_note_sequence(content)
             tensors = converter.to_tensors(ns).outputs
             result = list(tensors)
+            
+            # --- NEW: Perform chunking inside the worker ---
+            if result:
+                result = chunk_sequences(result, block_size=1024)
+            # -----------------------------------------------
+            
             if not result:
-                print(f"No sequences extracted from {midi_path}")
+                pass # Optionally suppress the print to reduce IO blocking
+                # print(f"No sequences extracted from {midi_path}")
+                
             # Log chosen tempo when sanitizer is active (trio converter)
             chosen = getattr(converter, "last_chosen_tempo", None)
-            if chosen is not None:
-                print(f"Tempo chosen for {midi_path}: {chosen:.2f} qpm")
+            # if chosen is not None:
+            #    print(f"Tempo chosen for {midi_path}: {chosen:.2f} qpm")
     except Exception as e:
-        print(f"Error processing {midi_path}: {e}")
+        # print(f"Error processing {midi_path}: {e}")
         pass
     return result
 
@@ -169,25 +178,32 @@ def load_dataset(root_dir: str,
     if num_workers is None:
         num_workers = min(40, os.cpu_count() or 4)
 
-    result: list[np.ndarray] = []
+    # --- NEW: Setup chunks directory ---
+    if cache_path:
+        chunks_dir = Path(cache_path).with_suffix("") / "chunks"
+        chunks_dir.mkdir(parents=True, exist_ok=True)
+    
+    result = []
+    chunk_idx = 0
     with Pool(num_workers) as pool:
-        for file_res in tqdm(pool.imap(process_midi_file, worker_args), total=len(worker_args)):
-            result.extend(file_res)
+        # Loop through async iterations
+        for file_res in tqdm(pool.imap_unordered(process_midi_file, worker_args, chunksize=200), total=len(worker_args)):
+            for chunk in file_res:
+                if cache_path:
+                    # Write to individual disk file
+                    chunk_file = chunks_dir / f"chunk_{chunk_idx:08d}.npy"
+                    np.save(chunk_file, chunk)
+                    result.append(str(chunk_file))
+                else:
+                    result.append(chunk)
+                chunk_idx += 1
 
     print(f"Extracted {len(result)} sequences.")
-    
-    # We enforce a maximum length of 1024 here.
-    # Longer sequences are split. Shorter sequences are left alone (padded at runtime).
-    # This ensures Bar 0 is always the start of the first chunk.
-    print("Chunking sequences to max length 1024...")
-    result = chunk_sequences(result, block_size=1024)
-    
     print(f"Final dataset size: {len(result)} chunks.")
-    # ------------------------------
 
     if cache_path:
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-        print(f"Saving to {cache_path}...")
+        print(f"Saving index to {cache_path}...")
         np.save(cache_path, np.array(result, dtype=object))
 
     return np.array(result, dtype=object)
