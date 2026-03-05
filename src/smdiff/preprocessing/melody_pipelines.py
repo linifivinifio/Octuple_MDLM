@@ -16,7 +16,7 @@
 import logging
 
 from . import pipeline
-from . import statistics
+from . import statistics_POP909
 from note_seq import events_lib
 from note_seq import melodies_lib
 from note_seq import Melody
@@ -57,7 +57,7 @@ class MelodyExtractor(pipeline.Pipeline):
     except events_lib.NonIntegerStepsPerBarError as detail:
       logging.warning('Skipped sequence: %s', detail)
       melodies = []
-      stats = [statistics.Counter('non_integer_steps_per_bar', 1)]
+      stats = [statistics_POP909.Counter('non_integer_steps_per_bar', 1)]
     self._set_stats(stats)
     return melodies
 
@@ -129,7 +129,7 @@ def extract_melodies(quantized_sequence,
   # the degree of polyphony that is acceptable.
   melodies = []
   # pylint: disable=g-complex-comprehension
-  stats = dict((stat_name, statistics.Counter(stat_name)) for stat_name in
+  stats = dict((stat_name, statistics_POP909.Counter(stat_name)) for stat_name in
                ['polyphonic_tracks_discarded',
                 'melodies_discarded_too_short',
                 'melodies_discarded_too_few_pitches',
@@ -140,7 +140,7 @@ def extract_melodies(quantized_sequence,
   # Capture melodies that are very small, in the range of the filter lower
   # bound `min_bars`, and large. The bucket intervals grow approximately
   # exponentially.
-  stats['melody_lengths_in_bars'] = statistics.Histogram(
+  stats['melody_lengths_in_bars'] = statistics_POP909.Histogram(
       'melody_lengths_in_bars',
       [0, 1, 10, 20, 30, 40, 50, 100, 200, 500, min_bars // 2, min_bars,
        min_bars + 1, min_bars - 1])

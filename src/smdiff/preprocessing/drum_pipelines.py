@@ -17,7 +17,7 @@
 from note_seq import DrumTrack
 from note_seq import sequences_lib
 
-from . import statistics
+from . import statistics_POP909
 
 
 def extract_drum_tracks(quantized_sequence,
@@ -74,14 +74,14 @@ def extract_drum_tracks(quantized_sequence,
         steps.
   """
   drum_tracks = []
-  stats = dict((stat_name, statistics.Counter(stat_name)) for stat_name in
+  stats = dict((stat_name, statistics_POP909.Counter(stat_name)) for stat_name in
                ['drum_tracks_discarded_too_short',
                 'drum_tracks_discarded_too_long', 'drum_tracks_truncated'])
   # Create a histogram measuring drum track lengths (in bars not steps).
   # Capture drum tracks that are very small, in the range of the filter lower
   # bound `min_bars`, and large. The bucket intervals grow approximately
   # exponentially.
-  stats['drum_track_lengths_in_bars'] = statistics.Histogram(
+  stats['drum_track_lengths_in_bars'] = statistics_POP909.Histogram(
       'drum_track_lengths_in_bars',
       [0, 1, 10, 20, 30, 40, 50, 100, 200, 500, min_bars // 2, min_bars,
        min_bars + 1, min_bars - 1])
