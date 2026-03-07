@@ -33,6 +33,10 @@ class SimpleNpyDataset(torch.utils.data.Dataset):
         if isinstance(x, np.ndarray) and x.ndim == 0 and x.dtype == object:
             x = x.item()
             
+        # If it's a string (e.g. file path to a chunk), load it
+        if isinstance(x, (str, np.str_)):
+            x = np.load(x, allow_pickle=True)
+            
         # If it's a list or object-dtype array, force conversion to int64
         # This fixes the "TypeError: can't convert np.ndarray of type numpy.object_"
         if not isinstance(x, np.ndarray) or x.dtype == object:
