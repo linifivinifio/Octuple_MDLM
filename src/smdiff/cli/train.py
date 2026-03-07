@@ -203,7 +203,7 @@ def main():
     H.grad_acc = ns.grad_acc
 
     H.wandb = ns.wandb
-    H.wanddb_name = ns.wandb_name
+    H.wandb_name = ns.wandb_name
     H.wandb_project = ns.wandb_project
 
     if not H.load_dir:
