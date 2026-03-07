@@ -34,7 +34,11 @@ def get_current_username():
         return os.environ.get('USER') or os.environ.get('USERNAME') or 'unknown'
 
 def get_scratch_dir(username=None):
-    """Returns /work/scratch/{username} or raises error if not on cluster logic."""
+    """Returns absolute path of local 'scratch' symlink/folder or /work/scratch/{username}."""
+    local_scratch = os.path.abspath("scratch")
+    if os.path.isdir(local_scratch) or os.path.islink("scratch"):
+        return local_scratch
+
     if not username:
         username = get_current_username()
     return f"/work/scratch/{username}"
