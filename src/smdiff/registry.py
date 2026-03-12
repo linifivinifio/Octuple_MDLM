@@ -37,6 +37,14 @@ def _create_octuple_ddpm(H):
     denoise_fn = DataParallel(denoise_fn)
     return AbsorbingDiffusion(H, denoise_fn, H.codebook_size)
 
+def _create_octuple_mdlm(H):
+    """Factory for Octuple MDLM model (with stage-awareness)."""
+    from .models import OctupleMDLM, AbsorbingDiffusion
+    from torch.nn import DataParallel
+    denoise_fn = OctupleMDLM(H)
+    denoise_fn = DataParallel(denoise_fn)
+    return AbsorbingDiffusion(H, denoise_fn, H.codebook_size)
+
 
 def _create_octuple_mask_ddpm(H):
     """Factory for Octuple DDPM with masking."""
@@ -79,6 +87,12 @@ MODEL_REGISTRY: Dict[str, ModelSpec] = {
         internal_model="octuple_ddpm",
         description="Octuple MIDI + Transformer (discrete diffusion)",
         factory=_create_octuple_ddpm,
+    ),
+    "octuple_mdlm": ModelSpec(
+        id="octuple_mdlm",
+        internal_model="octuple_mdlm",
+        description="Octuple MIDI + MDLM (stage-awareness, Masked Language Model)",
+        factory=_create_octuple_mdlm,
     ),
     "octuple_mask_ddpm": ModelSpec(
         id="octuple_mask_ddpm",

@@ -15,6 +15,11 @@ octuple_ddpm:
   internal_model: octuple_ddpm
   dataset_id: pop909_trio_octuple
 
+octuple_mdlm:
+  model: octuple_mdlm
+  internal_model: octuple_mdlm
+  dataset_id: pop909_trio_octuple
+
 octuple_mask_ddpm:
   model: octuple_mask_ddpm
   internal_model: octuple_mask_ddpm

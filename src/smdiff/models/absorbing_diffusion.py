@@ -363,7 +363,7 @@ class AbsorbingDiffusion(Sampler):
         x_t_input[x_t == -1] = 0
 
         # sample p(x_0 | x_t)
-        x_0_hat_logits = self._denoise_fn(x_t_input)
+        x_0_hat_logits = self._denoise_fn(x_t_input, t=t)
         x_0_hat_logits = [el.permute(0, 2, 1) for el in x_0_hat_logits]
         
         cross_entropy_loss_per_channel = [F.cross_entropy(x, x_0_ignore[:, :, i], ignore_index=-1, reduction='none').sum(1)
@@ -581,9 +581,11 @@ class AbsorbingDiffusion(Sampler):
 
         for t in reversed(sample_steps):
             print(f'Sample timestep {t:4d}', end='\r')
+            
+            t_tensor = torch.full((b,), t, device=device, dtype=torch.long)
 
             with torch.no_grad():
-                x_0_logits = self._denoise_fn(x_T, t=t)
+                x_0_logits = self._denoise_fn(x_T, t=t_tensor)
             # scale by temperature
             x_0_logits = [x / temp for x in x_0_logits]
             x_0_probs = [F.softmax(x, -1) for x in x_0_logits]
