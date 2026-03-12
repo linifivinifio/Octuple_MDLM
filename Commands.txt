@@ -1,0 +1,86 @@
+# eval_musicbert_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "musicbert_ddpm" --load_dir "runs/musicbert_ddpm_trio_octuple" --n_samples 100 --batch_size 4 --load_step 63000
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "musicbert_ddpm" --load_dir "runs/musicbert_ddpm_trio_octuple" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
+
+# eval_musicbert_ddpm_trio_octuple_bar_attribute
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "musicbert_ddpm" --load_dir "runs/musicbert_ddpm_trio_octuple_bar_attribute" --n_samples 100 --batch_size 4 --load_step 63000
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "musicbert_ddpm" --load_dir "runs/musicbert_ddpm_trio_octuple_bar_attribute" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
+
+# eval_musicbert_ddpm_trio_octuple_sync_bar
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "musicbert_ddpm" --load_dir "runs/musicbert_ddpm_trio_octuple_sync_bar" --n_samples 100 --batch_size 4 --load_step 63000
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "musicbert_ddpm" --load_dir "runs/musicbert_ddpm_trio_octuple_sync_bar" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
+
+# eval_musicbert_ddpm_trio_octuple_sync_bar_position
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "musicbert_ddpm" --load_dir "runs/musicbert_ddpm_trio_octuple_sync_bar_position" --n_samples 100 --batch_size 4 --load_step 63000
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "musicbert_ddpm" --load_dir "runs/musicbert_ddpm_trio_octuple_sync_bar_position" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
+
+# eval_octuple_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "octuple_ddpm" --load_dir "runs/octuple_ddpm_trio_octuple" --n_samples 100 --batch_size 4 --load_step 63000
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "octuple_ddpm" --load_dir "runs/octuple_ddpm_trio_octuple" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
+
+# eval_octuple_mask_bar_all_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_bar_all" --n_samples 100 --batch_size 4 --load_step 63000
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_bar_all" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
+
+# eval_octuple_mask_bar_attribute_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_bar_attribute" --n_samples 100 --batch_size 4 --load_step 63000
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_bar_attribute" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
+
+# eval_octuple_mask_mixed_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_mixed" --n_samples 100 --batch_size 4 --load_step 63000
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_mixed" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
+
+# eval_octuple_mask_sync_bar_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_sync_bar" --n_samples 100 --batch_size 4 --load_step 63000
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_sync_bar" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
+
+# eval_octuple_mask_sync_bar_position_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_sync_bar_position" --n_samples 100 --batch_size 4 --load_step 63000
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_sync_bar_position" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
+
+# eval_schmu_conv_trio
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_trio --task uncond --model "schmu_conv" --load_dir "runs/schmu_conv_trio" --batch_size 4 --tracks trio --load_step 81200
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_trio --task infill --model "schmu_conv" --load_dir "runs/schmu_conv_trio" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --tracks trio --load_step 81200
+
+# eval_schmu_tx_trio
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_trio --task uncond --model "schmu_tx" --load_dir "runs/schmu_tx_trio" --n_samples 100 --batch_size 4 --tracks trio --load_step 81200
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_trio --task infill --model "schmu_tx" --load_dir "runs/schmu_tx_trio" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --tracks trio --load_step 81200
+
+# run_musicBERT_pre_training
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/models/PT_encoder_musicBERT/train_musicBERT.py
+
+# train_musicbert_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model musicbert_ddpm --dataset_id pop909_trio_octuple --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "musicbert-ddpm-trio-octuple"
+
+# train_musicbert_mask_bar_attribute_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model musicbert_ddpm --dataset_id pop909_trio_octuple --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --strategy bar_attribute --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "musicbert-ddpm-trio-octuple"
+
+# train_musicbert_mask_sync_bar_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model musicbert_ddpm --dataset_id pop909_trio_octuple --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --strategy sync_bar --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "musicbert-ddpm-trio-octuple"
+
+# train_musicbert_mask_sync_bar_position_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model musicbert_ddpm --dataset_id pop909_trio_octuple --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --strategy sync_bar_position --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "musicbert-ddpm-trio-octuple"
+
+# train_octuple_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model octuple_ddpm --dataset_id pop909_trio_octuple --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "Octuple_MDLM" --wandb_name "test"
+
+# train_octuple_mask_bar_all_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model octuple_mask_ddpm --dataset_id pop909_trio_octuple --strategy bar_all --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "octuple-mask-ddpm-trio-octuple-bar-all"
+
+# train_octuple_mask_bar_attribute_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model octuple_mask_ddpm --dataset_id pop909_trio_octuple --strategy bar_attribute --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "octuple-mask-ddpm-trio-octuple-bar-attribute" --monotonicity_loss
+
+# train_octuple_mask_mixed_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model octuple_mask_ddpm --dataset_id pop909_trio_octuple --strategy mixed --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "octuple-mask-ddpm-trio-octuple-mixed"
+
+# train_octuple_mask_sync_bar_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model octuple_mask_ddpm --dataset_id pop909_trio_octuple --strategy sync_bar --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "octuple-mask-ddpm-trio-octuple-sync_bar"
+
+# train_octuple_mask_sync_bar_position_ddpm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model octuple_mask_ddpm --dataset_id pop909_trio_octuple --strategy sync_bar_position --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "octuple-mask-ddpm-trio-octuple-sync_bar_position"
+
+# train_schmu_conv_trio
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model schmu_conv --dataset_id pop909_trio --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "schmu-conv-trio"
+
+# train_schmu_tx_trio
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model schmu_tx --dataset_id pop909_trio --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 10000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "schmu-tx-trio"
