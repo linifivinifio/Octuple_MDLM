@@ -38,6 +38,10 @@ CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infi
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_sync_bar_position" --n_samples 100 --batch_size 4 --load_step 63000
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "octuple_mask_ddpm" --load_dir "runs/octuple_mask_ddpm_trio_octuple_sync_bar_position" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
 
+# eval_octuple_mdlm_trio_octuple_sync_bar_position
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "octuple_mdlm" --load_dir "runs/octuple_mdlm_trio_octuple_sync_bar_position" --n_samples 100 --batch_size 4 --load_step 63000
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "octuple_mdlm" --load_dir "runs/octuple_mdlm_trio_octuple_sync_bar_position" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
+
 # eval_schmu_conv_trio
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_trio --task uncond --model "schmu_conv" --load_dir "runs/schmu_conv_trio" --batch_size 4 --tracks trio --load_step 81200
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_trio --task infill --model "schmu_conv" --load_dir "runs/schmu_conv_trio" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --tracks trio --load_step 81200
