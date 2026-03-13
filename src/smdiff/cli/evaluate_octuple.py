@@ -36,8 +36,14 @@ def load_octuple_dataset(path):
     try:
         data = np.load(path, allow_pickle=True)
         # Convert to list of arrays if it's an object array
-        if data.dtype == object:
-            return [x for x in data]
+        if data.dtype == object or data.dtype.type is np.str_:
+            loaded_data = []
+            for x in data:
+                # If the item is a string/path, load the actual chunk
+                if isinstance(x, (str, np.str_)):
+                    x = np.load(x, allow_pickle=True)
+                loaded_data.append(x)
+            return loaded_data
         return data
     except Exception as e:
         log(f"Error loading dataset: {e}")
