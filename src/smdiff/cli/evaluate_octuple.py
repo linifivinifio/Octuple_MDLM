@@ -74,6 +74,7 @@ def main():
     parser.add_argument("--mask_token_end", type=int, default=512, help="End token index for masking")
     parser.add_argument("--preserve_structure", action="store_true", 
                         help="If set, leaves Bar (0) and Position (1) tokens unmasked in the target range, masking only musical content.")
+    parser.add_argument("--compute_fmd", action="store_true", help="Skip generation and evaluate FMD on existing samples")
     args = parser.parse_args()
     
     
@@ -87,6 +88,65 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log(f"Using device: {device}")
+
+    if args.compute_fmd:
+        log("FMD evaluation mode enabled. Skipping model loading and generation.")
+        # Perform FMD computation directly
+        try:
+            from frechet_music_distance import FrechetMusicDistance
+        except ImportError:
+            log("frechet-music-distance not installed. Please install it first.")
+            return
+
+        # Prepare reference directory (temporary flat dir of symlinks for test POS909)
+        import tempfile
+        import shutil
+        test_dir = os.path.join(_REPO_ROOT, "data", "test", "POP909")
+        temp_ref_dir = tempfile.mkdtemp(prefix="fmd_ref_")
+        
+        # Creating flat directory with symlinks to reference MIDI files
+        log(f"Creating temporary reference directory at {temp_ref_dir}...")
+        for root, _, files in os.walk(test_dir):
+            for f in files:
+                if f.lower().endswith('.mid') or f.lower().endswith('.midi'):
+                    src = os.path.join(root, f)
+                    # Use unique name in case of overlaps
+                    dst = os.path.join(temp_ref_dir, f"{os.path.basename(root)}_{f}")
+                    os.symlink(src, dst)
+        
+        # Determine path to existing metrics JSON
+        metrics_path = os.path.join(metrics_dir, f"metrics_{args.task}_{args.load_step if args.load_step != 0 else 'best'}.json")
+        if not os.path.exists(metrics_path):
+            log(f"Metrics file {metrics_path} does not exist. Please run standard evaluation first.")
+            shutil.rmtree(temp_ref_dir)
+            return
+            
+        with open(metrics_path, 'r') as f:
+            metrics = json.load(f)
+
+        log("Initializing FrechetMusicDistance (CLaMP2)...")
+        fmd_metric = FrechetMusicDistance(feature_extractor='clamp2', gaussian_estimator='mle', verbose=True)
+
+        log(f"Computing FMD score against {samples_dir}...")
+        try:
+            score = fmd_metric.score(
+                reference_path=temp_ref_dir,
+                test_path=samples_dir
+            )
+            log(f"Computed FMD: {score}")
+            metrics["frechet_music_distance"] = float(score)
+            
+            # Save updated metrics
+            with open(metrics_path, 'w') as f:
+                json.dump(metrics, f, indent=2)
+            log(f"Updated {metrics_path} with Frechet Music Distance.")
+        except Exception as e:
+            log(f"FMD computation failed: {e}")
+        finally:
+            shutil.rmtree(temp_ref_dir)
+            log("Cleaned up temporary reference directory.")
+
+        return
 
     model_id = args.model
     log(f"Using Model ID: {model_id}")
