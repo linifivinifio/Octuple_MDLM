@@ -90,3 +90,4 @@ wandb==0.23.1
 wcwidth==0.2.14
 xyzservices==2025.11.0
 muspy==0.5.0
+git+https://github.com/jryban/frechet-music-distance.git
