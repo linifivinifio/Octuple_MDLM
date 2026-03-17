@@ -43,7 +43,12 @@ def main(H):
 
     data_np = np.load(H.dataset_path, allow_pickle=True)
     log("Tokenizer ID: " + H.tokenizer_id)
-    midi_data = SimpleNpyDataset(data_np, H.NOTES, tokenizer_id=getattr(H, 'tokenizer_id', None))
+    eos_token = None
+    if getattr(H, 'eos', True) and "octuple" in getattr(H, 'tokenizer_id', ''):
+        eos_token = np.array(H.codebook_size, dtype=np.int64)
+        log(f"EOS token enabled: {eos_token}")
+    midi_data = SimpleNpyDataset(data_np, H.NOTES, tokenizer_id=getattr(H, 'tokenizer_id', None),
+                                 eos_token=eos_token)
     
     if getattr(H, 'wandb', False):
         run_name = H.wandb_name if H.wandb_name else f"{H.model_id}_{H.tracks}_{H.masking_strategy}"

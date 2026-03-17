@@ -32,7 +32,8 @@ def load_dataset(cfg: Dict):
     print(f"Loading dataset from {dataset_path} (Tokenizer: {tokenizer_id})...")
     data = np.load(dataset_path, allow_pickle=True)
     
-    # 2. Pass tokenizer_id to the dataset
-    dataset = SimpleNpyDataset(data, seq_len, tokenizer_id=tokenizer_id)
+    # 2. Pass tokenizer_id and optional eos_token to the dataset
+    eos_token = cfg.get("eos_token", None)
+    dataset = SimpleNpyDataset(data, seq_len, tokenizer_id=tokenizer_id, eos_token=eos_token)
     
     return dataset

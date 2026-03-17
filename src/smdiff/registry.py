@@ -35,7 +35,12 @@ def _create_octuple_ddpm(H):
     from torch.nn import DataParallel
     denoise_fn = Transformer(H)
     denoise_fn = DataParallel(denoise_fn)
-    return AbsorbingDiffusion(H, denoise_fn, H.codebook_size)
+    # AFTER (both factory functions)
+    if getattr(H, 'eos', False):
+        mask_id = tuple(c + 1 for c in H.codebook_size)
+    else:
+        mask_id = H.codebook_size
+    return AbsorbingDiffusion(H, denoise_fn, mask_id)
 
 def _create_octuple_mdlm(H):
     """Factory for Octuple MDLM model (with stage-awareness)."""
@@ -43,7 +48,12 @@ def _create_octuple_mdlm(H):
     from torch.nn import DataParallel
     denoise_fn = OctupleMDLM(H)
     denoise_fn = DataParallel(denoise_fn)
-    return AbsorbingDiffusion(H, denoise_fn, H.codebook_size)
+    # When EOS is enabled, EOS occupies codebook_size[c] and mask_id shifts to codebook_size[c]+1
+    if getattr(H, 'eos', False):
+        mask_id = tuple(c + 1 for c in H.codebook_size)
+    else:
+        mask_id = H.codebook_size
+    return AbsorbingDiffusion(H, denoise_fn, mask_id)
 
 
 def _create_octuple_mask_ddpm(H):
@@ -52,7 +62,11 @@ def _create_octuple_mask_ddpm(H):
     from torch.nn import DataParallel
     denoise_fn = Transformer(H)
     denoise_fn = DataParallel(denoise_fn)
-    return AbsorbingDiffusion(H, denoise_fn, H.codebook_size)
+    if getattr(H, 'eos', False):
+        mask_id = tuple(c + 1 for c in H.codebook_size)
+    else:
+        mask_id = H.codebook_size
+    return AbsorbingDiffusion(H, denoise_fn, mask_id)
 
 
 def _create_musicbert_ddpm(H):

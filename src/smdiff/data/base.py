@@ -15,11 +15,13 @@ class SimpleNpyDataset(torch.utils.data.Dataset):
     Wraps a numpy array for torch DataLoader compatibility.
     Uses tokenizer_id to determine processing logic (Octuple vs OneHot).
     """
-    def __init__(self, data: np.ndarray, seq_len: int, tokenizer_id: str | None = None):
+    def __init__(self, data: np.ndarray, seq_len: int, tokenizer_id: str | None = None,
+                 eos_token: np.ndarray | None = None):
         self.data = data
         self.seq_len = seq_len
         self.tokenizer_id = tokenizer_id or ""
         self.is_octuple = "octuple" in self.tokenizer_id
+        self.eos_token = eos_token
         
     def __len__(self):
         return len(self.data)
@@ -57,7 +59,14 @@ class SimpleNpyDataset(torch.utils.data.Dataset):
                 x = np.pad(x, (0, pad_len), 'constant')
             else:
                 # Octuple/Trio (Time, Channels) -> Pad time dimension only
-                x = np.pad(x, [(0, pad_len), (0, 0)], 'constant', constant_values=-1)
+                if self.eos_token is not None:
+                    # Natural sequence end: insert one EOS row, then fill the rest with -1
+                    x_new = np.full((self.seq_len, x.shape[1]), -1, dtype=np.int64)
+                    x_new[:length] = x
+                    x_new[length] = self.eos_token  # single EOS at the boundary
+                    x = x_new
+                else:
+                    x = np.pad(x, [(0, pad_len), (0, 0)], 'constant', constant_values=-1)
 
         # 4. Octuple Bar Normalization
         # if self.is_octuple and x.ndim == 2 and x.shape[1] == 8:

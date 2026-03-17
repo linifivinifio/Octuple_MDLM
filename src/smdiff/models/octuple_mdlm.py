@@ -19,17 +19,28 @@ class OctupleMDLM(nn.Module):
     def __init__(self, H):
         super().__init__()
 
-        self.vocab_size = [h + 1 for h in H.codebook_size]
         self.n_embd = H.bert_n_emb
         self.block_size = H.block_size
         self.n_layers = H.bert_n_layers
         self.codebook_size = H.codebook_size
         self.causal = H.sampler == 'autoregressive'
+
+        use_eos = getattr(H, 'eos', False)
         if self.causal:
-            self.vocab_size = H.codebook_size
+            # Autoregressive: no mask token, no EOS expansion
+            emb_vocab_size = list(H.codebook_size)
+            head_out_size = list(H.codebook_size)
+        elif use_eos:
+            # EOS occupies codebook_size[c]; mask_id is codebook_size[c]+1
+            emb_vocab_size = [h + 2 for h in H.codebook_size]
+            head_out_size = [h + 1 for h in H.codebook_size]
+        else:
+            emb_vocab_size = [h + 1 for h in H.codebook_size]
+            head_out_size = list(H.codebook_size)
+        self.vocab_size = emb_vocab_size
 
         # Token embeddings for each channel
-        self.tok_emb = nn.ModuleList([nn.Embedding(vs, self.n_embd) for vs in self.vocab_size])
+        self.tok_emb = nn.ModuleList([nn.Embedding(vs, self.n_embd) for vs in emb_vocab_size])
         
         # Dimension reduction after concatenation of channel embeddings
         emb_in_dim = self.n_embd * len(self.codebook_size)
@@ -54,7 +65,7 @@ class OctupleMDLM(nn.Module):
         
         # Decoder head
         self.ln_f = nn.LayerNorm(self.n_embd)
-        self.head = nn.ModuleList([nn.Linear(self.n_embd, cs, bias=False) for cs in self.codebook_size])
+        self.head = nn.ModuleList([nn.Linear(self.n_embd, hs, bias=False) for hs in head_out_size])
 
         # Apply weight initialization
         self.apply(self._init_weights)

@@ -46,6 +46,7 @@ class HparamsAbsorbing(HparamsBase):
         self.warmup_iters = 10000
         self.validation_set_size = 0.05
         self.augment = False
+        self.eos = True
 
         self.apply_parser_values(parser)
 
