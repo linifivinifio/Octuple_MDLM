@@ -88,6 +88,10 @@ def build_underlying_argv(cfg: Dict, ns: argparse.Namespace) -> List[str]:
     if warmup_iters is not None:
         args += ["--warmup_iters", str(warmup_iters)]
 
+    eos = pick("eos")
+    if eos is not None:
+        args += ["--eos" if eos else "--no-eos"]
+
     return args
 
 
@@ -117,6 +121,8 @@ def main():
     parser.add_argument("--tracks", type=str, default=None)
     parser.add_argument("--monotonicity_loss", action="store_true", default=False)
     parser.add_argument("--loss_weights", nargs="+", type=float, default=None)
+    parser.add_argument("--eos", action=argparse.BooleanOptionalAction, default=None,
+                        help="Enable/disable EOS token insertion (--eos or --no-eos)")
 
     # Frequency/logging settings (kept compatible)
     parser.add_argument("--steps_per_eval", type=int, default=None)

@@ -75,6 +75,7 @@ def main():
     parser.add_argument("--preserve_structure", action="store_true", 
                         help="If set, leaves Bar (0) and Position (1) tokens unmasked in the target range, masking only musical content.")
     parser.add_argument("--compute_fmd", action="store_true", help="Skip generation and evaluate FMD on existing samples")
+    parser.add_argument("--eos", action=argparse.BooleanOptionalAction, default=None, help="Enable/disable EOS token handling (--eos or --no-eos)")
     args = parser.parse_args()
     
     
@@ -163,6 +164,9 @@ def main():
         "--batch_size", str(args.batch_size),
         "--tracks", "trio_octuple"
     ]
+
+    if args.eos is not None:
+        sys.argv += ["--eos" if args.eos else "--no-eos"]
     
     try:
         H = get_sampler_hparams('sample')
