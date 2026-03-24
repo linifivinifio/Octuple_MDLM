@@ -15,6 +15,14 @@ steps_per_update_ema: 10
 log_base_dir: null
 load_dir: null
 load_step: 0
+loss_type: mmd_fmd_loss
+mmd_fmd:
+  mmd_weight: 0.01
+  fmd_weight: 0.005
+  embedding_dim: 64
+  bandwidths: [0.5, 1.0, 2.0, 4.0]
+  max_samples: 4096
+  eps: 1.0e-6
 masking_strategy: null
 hierarchical_masking:
   channel_priors: [1.6, 1.6, 1.0, 0.9, 0.9, 0.9, 1.0, 0.9]

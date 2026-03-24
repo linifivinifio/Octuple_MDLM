@@ -246,7 +246,7 @@ def main(H):
         })
         save_stats(H, stats_to_save, step)
 
-    def flush_logs(step, current_losses_buffer, current_vb_losses_buffer, step_time):
+    def flush_logs(step, current_losses_buffer, current_vb_losses_buffer, current_mmd_losses_buffer, current_fmd_losses_buffer, step_time):
         """Calculates mean loss from buffer and logs to console/wandb."""
         if len(current_losses_buffer) == 0: return
 
@@ -256,10 +256,22 @@ def main(H):
         mean_vb_loss = 0.0
         if len(current_vb_losses_buffer) > 0:
             mean_vb_loss = np.mean(current_vb_losses_buffer)
+
+        mean_mmd_loss = 0.0
+        if len(current_mmd_losses_buffer) > 0:
+            mean_mmd_loss = np.mean(current_mmd_losses_buffer)
+
+        mean_fmd_loss = 0.0
+        if len(current_fmd_losses_buffer) > 0:
+            mean_fmd_loss = np.mean(current_fmd_losses_buffer)
         
         log_data = {'mean_loss': mean_loss, 'step_time': step_time}
         if H.sampler == 'absorbing' and len(current_vb_losses_buffer) > 0:
             log_data['vb_loss'] = mean_vb_loss
+        if len(current_mmd_losses_buffer) > 0:
+            log_data['mmd_loss'] = mean_mmd_loss
+        if len(current_fmd_losses_buffer) > 0:
+            log_data['fmd_loss'] = mean_fmd_loss
             
         log_stats(step, log_data)
 
@@ -272,6 +284,10 @@ def main(H):
             }
             if H.sampler == 'absorbing' and len(current_vb_losses_buffer) > 0:
                 wandb_metrics["train/vb_loss"] = mean_vb_loss
+            if len(current_mmd_losses_buffer) > 0:
+                wandb_metrics["train/mmd_loss"] = mean_mmd_loss
+            if len(current_fmd_losses_buffer) > 0:
+                wandb_metrics["train/fmd_loss"] = mean_fmd_loss
                 
             wandb.log(wandb_metrics, step=step)
 
@@ -283,6 +299,8 @@ def main(H):
     train_iterator = cycle(train_loader)
     current_losses_buffer = [] 
     current_vb_losses_buffer = []
+    current_mmd_losses_buffer = []
+    current_fmd_losses_buffer = []
 
     for step in range(start_step, H.train_steps):
         sampler.train()
@@ -368,6 +386,11 @@ def main(H):
             current_vb_losses_buffer.append(vb_val)
             history['elbo'].append(vb_val)
 
+        if 'mmd_loss' in stats:
+            current_mmd_losses_buffer.append(stats['mmd_loss'].item())
+        if 'fmd_loss' in stats:
+            current_fmd_losses_buffer.append(stats['fmd_loss'].item())
+
         # Update EMA only when the model weights actually changed
         if is_update_step and H.ema and step > 0:
             if step % H.steps_per_update_ema == 0:
@@ -375,9 +398,18 @@ def main(H):
 
         # 4. Periodic Actions
         if step % H.steps_per_log == 0:
-            flush_logs(step, current_losses_buffer, current_vb_losses_buffer, time.time() - step_start_time)
+            flush_logs(
+                step,
+                current_losses_buffer,
+                current_vb_losses_buffer,
+                current_mmd_losses_buffer,
+                current_fmd_losses_buffer,
+                time.time() - step_start_time,
+            )
             current_losses_buffer = []
             current_vb_losses_buffer = []
+            current_mmd_losses_buffer = []
+            current_fmd_losses_buffer = []
 
         if step % H.steps_per_sample == 0 and step > 0:
             run_sampling(step)

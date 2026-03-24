@@ -14,6 +14,7 @@ def add_common_args(parser):
     parser.add_argument("--log_base_dir", type=str, default=None)
     parser.add_argument("--port", type=int, default=8097)
     parser.add_argument("--masking_strategy", type=str, default=None)
+    parser.add_argument("--loss_type", type=str, default=None)
     parser.add_argument("--seed", type=int, default=67)
     parser.add_argument("--monotonicity_loss", action="store_true", default=False)
     parser.add_argument("--loss_weights", nargs="+", type=float, default=None)

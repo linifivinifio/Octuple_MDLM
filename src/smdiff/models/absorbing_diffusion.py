@@ -4,6 +4,7 @@ import torch
 import torch.distributions as dists
 import torch.nn.functional as F
 from tqdm import tqdm
+from smdiff.losses import MMDFMDRegularizer, resolve_loss_id
 from .sampler import Sampler
 
 
@@ -19,15 +20,25 @@ class AbsorbingDiffusion(Sampler):
 
         self._denoise_fn = denoise_fn
         self.sampling_batch_size = H.sampling_batch_size
-        self.loss_type = H.loss_type
+        self.loss_type = resolve_loss_id(getattr(H, 'loss_type', 'mmd_fmd_loss')).id
         self.mask_schedule = H.mask_schedule
         self.sample_schedule = H.sample_schedule
         self.register_buffer('mask_id', torch.tensor(mask_id))
 
         # Partial masking strategy
         self.masking_strategy = getattr(H, 'masking_strategy', None)
+        self.mmd_fmd_cfg = getattr(H, 'mmd_fmd', {}) or {}
         self.hierarchical_masking = getattr(H, 'hierarchical_masking', {}) or {}
         self.loss_weights = getattr(H, "loss_weights", None)
+
+        # Optional differentiable regularization terms (used by mmd_fmd_loss)
+        self.mmd_fmd_regularizer = MMDFMDRegularizer(
+            mmd_weight=float(self.mmd_fmd_cfg.get("mmd_weight", 0.01)),
+            fmd_weight=float(self.mmd_fmd_cfg.get("fmd_weight", 0.005)),
+            bandwidths=self.mmd_fmd_cfg.get("bandwidths", [0.5, 1.0, 2.0, 4.0]),
+            max_samples=int(self.mmd_fmd_cfg.get("max_samples", 4096)),
+            eps=float(self.mmd_fmd_cfg.get("eps", 1e-6)),
+        )
 
         # Track loss at each time step for importance sampling
         self.register_buffer('Lt_history', torch.zeros(self.num_timesteps+1))
@@ -494,6 +505,18 @@ class AbsorbingDiffusion(Sampler):
         else:
             cross_entropy_loss = cross_entropy_loss_stack.sum(0)
 
+        # Differentiable MMD + Frechet-style regularization (weak by default)
+        mmd_loss = torch.tensor(0.0, device=device)
+        fmd_loss = torch.tensor(0.0, device=device)
+        reg_total = torch.tensor(0.0, device=device)
+        if self.loss_type == 'mmd_fmd_loss':
+            valid_mask = (x_0_ignore != -1)
+            reg_total, mmd_loss, fmd_loss = self.mmd_fmd_regularizer(
+                x_0_hat_logits,
+                x_0,
+                valid_mask,
+            )
+
         # --- Test: Structure Regression Loss (Bar & Position) ---
         aux_loss = 0.0
         if is_octuple and self.monotonicity_loss:
@@ -539,7 +562,7 @@ class AbsorbingDiffusion(Sampler):
             denom = mask.float().sum(1)
             denom[denom == 0] = 1  # prevent divide by 0 errors.
             loss = cross_entropy_loss / denom
-        elif self.loss_type == 'reweighted_elbo':
+        elif self.loss_type in ['plain_ce_loss', 'reweighted_elbo', 'mmd_fmd_loss']:
             # Fix: Use (T+1) to ensure weight is never exactly 0 at t=T
             weight = (1 - (t / (self.num_timesteps + 1)))
             loss = weight * cross_entropy_loss
@@ -549,6 +572,8 @@ class AbsorbingDiffusion(Sampler):
 
         # Add Auxiliary Structure Losses
         loss = loss + aux_loss
+        if self.loss_type == 'mmd_fmd_loss':
+            loss = loss + reg_total
 
         # Track loss at each time step history for bar plot
         Lt2_prev = self.loss_history.gather(dim=0, index=t)
@@ -563,7 +588,7 @@ class AbsorbingDiffusion(Sampler):
         self.Lt_history.scatter_(dim=0, index=t, src=new_Lt_history)
         self.Lt_count.scatter_add_(dim=0, index=t, src=torch.ones_like(Lt2).to(self.loss_history.dtype))
 
-        return loss.mean(), vb_loss.mean()
+        return loss.mean(), vb_loss.mean(), mmd_loss, fmd_loss
 
     def sample(self, temp=1.0, sample_steps=None, x_T=None, B=None, progress_handler=None):
         b, device = self.sampling_batch_size, 'cuda'
@@ -769,8 +794,8 @@ class AbsorbingDiffusion(Sampler):
         return elbo
 
     def train_iter(self, x):
-        loss, vb_loss = self._train_loss(x)
-        stats = {'loss': loss, 'vb_loss': vb_loss}
+        loss, vb_loss, mmd_loss, fmd_loss = self._train_loss(x)
+        stats = {'loss': loss, 'vb_loss': vb_loss, 'mmd_loss': mmd_loss, 'fmd_loss': fmd_loss}
         return stats
 
     @torch.no_grad()

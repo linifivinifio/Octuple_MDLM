@@ -24,7 +24,7 @@ class HparamsAbsorbing(HparamsBase):
         super().__init__()
 
         self.sampler = "absorbing"
-        self.loss_type = "reweighted_elbo"
+        self.loss_type = "mmd_fmd_loss"
         self.sample_type = "diffusion"
         self.mask_schedule = "random"
         self.sample_schedule = "random"

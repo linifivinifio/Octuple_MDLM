@@ -22,6 +22,7 @@ from smdiff import trainer
 from smdiff.registry import resolve_model_id
 from smdiff.configs.loader import load_config
 from smdiff.data import apply_dataset_to_config
+from smdiff.losses import resolve_loss_id
 from smdiff.masking import resolve_masking_id
 from smdiff.tokenizers import resolve_tokenizer_id
 from smdiff.cluster import get_current_username, is_cluster, get_scratch_dir
@@ -71,6 +72,8 @@ def build_underlying_argv(cfg: Dict, ns: argparse.Namespace) -> List[str]:
         args += ["--port", str(pick("port"))]
     if pick("masking_strategy"):
         args += ["--masking_strategy", pick("masking_strategy")]
+    if pick("loss_type"):
+        args += ["--loss_type", pick("loss_type")]
     if pick("seed"):
         args += ["--seed", str(pick("seed"))]
     if pick("monotonicity_loss"):
@@ -109,6 +112,8 @@ def main():
                         help="Dataset id from DATASET_REGISTRY (e.g., pop909_melody, pop909_octuple)")
     parser.add_argument("--strategy", type=str, default=None,
                         help="Optional masking/training strategy id (passed as masking_strategy)")
+    parser.add_argument("--loss_type", type=str, default=None,
+                        help="Loss id from LOSS_REGISTRY (e.g., mmd_fmd_loss, plain_CE_loss, elbo, mlm)")
 
     # Common training settings (mapped to legacy parser)
     parser.add_argument("--dataset_path", type=str, default=None)
@@ -173,6 +178,10 @@ def main():
     if masking_strategy:
         resolve_masking_id(masking_strategy)
 
+    selected_loss = ns.loss_type or cfg.get("loss_type") or "mmd_fmd_loss"
+    loss_spec = resolve_loss_id(selected_loss)
+    cfg["loss_type"] = loss_spec.id
+
     # Compose argv for existing hparams code
     translated_argv = [sys.argv[0]] + build_underlying_argv(cfg, ns)
 
@@ -207,6 +216,8 @@ def main():
     H.dataset_id = ns.dataset_id
     H.model_id = ns.model  # Store canonical model_id for registry lookup
     H.grad_acc = ns.grad_acc
+    H.loss_type = cfg.get("loss_type", "mmd_fmd_loss")
+    H.mmd_fmd = cfg.get("mmd_fmd", {})
     H.hierarchical_masking = cfg.get("hierarchical_masking", {})
 
     H.wandb = ns.wandb

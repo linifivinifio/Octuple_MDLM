@@ -76,6 +76,19 @@ Registered in `src/smdiff/masking/registry.py`:
 
 A diffusion process makes sure masking occurs linearly in time, such that by the last step, everything is masked. For the `random` strategy, the number of tokens is linearly interpolated over time, for all other strategies, the number of `bars` is linearly interpolated over time.
 
+### Available Losses
+
+Registered in `src/smdiff/losses/registry.py`:
+
+| Loss ID | Description |
+| -------- | ----------- |
+| `mmd_fmd_loss` | Default loss: plain CE backbone + multi-kernel MMD + minibatch Frechet-style regularization. |
+| `plain_ce_loss` | Legacy baseline objective (same behavior as the historical CE/reweighted path). |
+| `plain_CE_loss` | Backward-compatible alias to `plain_ce_loss`. |
+| `elbo` | ELBO-style objective. |
+| `mlm` | MLM-style objective. |
+| `reweighted_elbo` | Backward-compatible legacy id; preserved and supported. |
+
 ## Codebase
 
 All shell scripts for starting `sbatch` jobs on the DINFK cluster are in the `scripts` folder.
