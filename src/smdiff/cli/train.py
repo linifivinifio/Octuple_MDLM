@@ -207,6 +207,7 @@ def main():
     H.dataset_id = ns.dataset_id
     H.model_id = ns.model  # Store canonical model_id for registry lookup
     H.grad_acc = ns.grad_acc
+    H.hierarchical_masking = cfg.get("hierarchical_masking", {})
 
     H.wandb = ns.wandb
     H.wandb_name = ns.wandb_name

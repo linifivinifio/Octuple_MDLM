@@ -42,6 +42,10 @@ CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infi
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "octuple_mdlm" --load_dir "runs/octuple_mdlm_trio_octuple_sync_bar_position" --n_samples 100 --batch_size 4 --load_step 63000
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "octuple_mdlm" --load_dir "runs/octuple_mdlm_trio_octuple_sync_bar_position" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000
 
+# eval_octuple_mdlm_trio_octuple_hierarchical
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task uncond --model "octuple_mdlm" --load_dir "runs/octuple_mdlm_trio_octuple_hierarchical" --n_samples 100 --batch_size 4 --load_step 63000 --strategy hierarchical
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_octuple --task infill --model "octuple_mdlm" --load_dir "runs/octuple_mdlm_trio_octuple_hierarchical" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --load_step 63000 --strategy hierarchical
+
 # eval_schmu_conv_trio
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_trio --task uncond --model "schmu_conv" --load_dir "runs/schmu_conv_trio" --batch_size 4 --tracks trio --load_step 81200
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 -m smdiff.cli.evaluate_trio --task infill --model "schmu_conv" --load_dir "runs/schmu_conv_trio" --input_midi_dir "data/test/POP909" --batch_size 4 --mask_token_start 256 --mask_token_end 512 --tracks trio --load_step 81200
@@ -85,6 +89,9 @@ CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model octuple_ma
 
 # train_octuple_mask_sync_bar_position_mdlm_trio_octuple
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model octuple_mdlm --dataset_id pop909_trio_octuple --strategy sync_bar_position --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "Octuple_MDLM" --wandb_name "mdlm_test"
+
+# train_octuple_mask_hierarchical_mdlm_trio_octuple
+CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model octuple_mdlm --dataset_id pop909_trio_octuple --strategy hierarchical --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "Octuple_MDLM" --wandb_name "mdlm_hierarchical"
 
 # train_schmu_conv_trio
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model schmu_conv --dataset_id pop909_trio --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "schmu-conv-trio"

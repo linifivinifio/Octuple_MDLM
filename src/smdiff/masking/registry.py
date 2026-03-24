@@ -41,6 +41,11 @@ MASKING_REGISTRY: Dict[str, MaskingSpec] = {
         description="Dynamic attribute-level masking: Dynamic attribute-level masking: Masks the `bar` & `position` token in 16-bar continous chunks; additionally applies `bar_attribute` strategy to all remaining attributes.",
         notes="Scales linearly with timestep.",
     ),
+    "hierarchical": MaskingSpec(
+        id="hierarchical",
+        description="Prior-guided probabilistic masking with continuous hierarchical weighting over bar-attribute units.",
+        notes="Uses time-dependent soft hierarchy bias (no hard stages) with static channel priors.",
+    ),
     
 }
 

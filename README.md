@@ -72,6 +72,7 @@ Registered in `src/smdiff/masking/registry.py`:
 | `mixed` | Randomly choose one masking strategy per batch (includes `random`, `bar_attribute`, `bar_all`). |
 | `sync_bar` | Dynamic attribute-level masking: Masks the `bar` token in 16-bar continous chunks; additionally applies `bar_attribute` strategy to all remaining attributes. |
 | `sync_bar_position` | Dynamic attribute-level masking: Dynamic attribute-level masking: Masks the `bar` & `position` token in 16-bar continous chunks; additionally applies `bar_attribute` strategy to all remaining attributes. |
+| `hierarchical` | Prior-guided probabilistic masking with continuous hierarchical weighting over `(bar, attribute)` units (PGPM-inspired, no hard stages). |
 
 A diffusion process makes sure masking occurs linearly in time, such that by the last step, everything is masked. For the `random` strategy, the number of tokens is linearly interpolated over time, for all other strategies, the number of `bars` is linearly interpolated over time.
 

@@ -22,6 +22,8 @@ from smdiff.utils.log_utils import load_model, config_log, log
 from smdiff.metrics.unconditional import evaluate_unconditional
 from smdiff.metrics.infilling import evaluate_infilling
 from smdiff.preprocessing.data import POP909OctupleTrioConverter
+from smdiff.configs.loader import load_config
+from smdiff.masking import resolve_masking_id
 from note_seq import midi_file_to_note_sequence
 from smdiff.cluster import get_scratch_dir
 
@@ -70,6 +72,7 @@ def main():
     parser.add_argument("--n_samples", type=int, default=100, help="Number of samples (uncond)")
     parser.add_argument("--n_midis", type=int, default=None, help="Limit number of MIDI files for infilling")
     parser.add_argument("--load_step", type=int, default=0, help="Checkpoint step to load (0 for best/latest)")
+    parser.add_argument("--strategy", type=str, default=None, help="Optional masking strategy for infill mask construction")
     parser.add_argument("--mask_token_start", type=int, default=256, help="Start token index for masking")
     parser.add_argument("--mask_token_end", type=int, default=512, help="End token index for masking")
     parser.add_argument("--preserve_structure", action="store_true", 
@@ -77,6 +80,9 @@ def main():
     parser.add_argument("--compute_fmd", action="store_true", help="Skip generation and evaluate FMD on existing samples")
     parser.add_argument("--eos", action=argparse.BooleanOptionalAction, default=None, help="Enable/disable EOS token handling (--eos or --no-eos)")
     args = parser.parse_args()
+
+    if args.strategy:
+        resolve_masking_id(args.strategy)
     
     
     # 1. Prepare Output Directories
@@ -165,6 +171,9 @@ def main():
         "--tracks", "trio_octuple"
     ]
 
+    if args.strategy:
+        sys.argv += ["--masking_strategy", args.strategy]
+
     if args.eos is not None:
         sys.argv += ["--eos" if args.eos else "--no-eos"]
     
@@ -178,6 +187,8 @@ def main():
 
     # Override H params from args/context if needed
     H.load_dir = args.load_dir 
+    H.masking_strategy = args.strategy
+    H.hierarchical_masking = load_config(model_id).get("hierarchical_masking", {})
     # Ensure Octuple masking strategy if relevant (usually loaded from H)
     
     # 2. Load Model
@@ -310,13 +321,31 @@ def main():
                 # Copy original
                 masked_input = original_tokens.copy()
                 
-                if args.preserve_structure:
-                    # Keep Bar (0) and Pos (1) unmasked. 
+                if args.strategy == "hierarchical" and hasattr(sampler, "build_hierarchical_mask"):
+                    constrain_window = True
+                    if hasattr(sampler, "_get_hierarchical_config"):
+                        cfg = sampler._get_hierarchical_config(masked_input.shape[1])
+                        constrain_window = cfg.get("eval_constrain_to_window", True)
+
+                    x_ref = torch.tensor(masked_input[np.newaxis, :, :], dtype=torch.long, device=device)
+                    t_eval = torch.full((1,), sampler.num_timesteps, dtype=torch.long, device=device)
+                    hmask = sampler.build_hierarchical_mask(
+                        x_0=x_ref,
+                        t=t_eval,
+                        window_start=mask_token_start if constrain_window else None,
+                        window_end=mask_token_end if constrain_window else None,
+                        preserve_structure=args.preserve_structure,
+                    )[0].cpu().numpy()
+
+                    for ch in range(masked_input.shape[1]):
+                        masked_input[hmask[:, ch], ch] = mask_token_id[ch]
+                elif args.preserve_structure:
+                    # Keep Bar (0) and Pos (1) unmasked.
                     # Mask columns 2 through 7 (Instrument, Pitch, Dur, Vel, TimeSig, Tempo)
-                        masked_input[mask_token_start:mask_token_end, 2:] = mask_token_id[2:]
+                    masked_input[mask_token_start:mask_token_end, 2:] = mask_token_id[2:]
                 else:
                     # Apply mask to token range
-                    masked_input[mask_token_start:mask_token_end] = mask_token_id 
+                    masked_input[mask_token_start:mask_token_end] = mask_token_id
                 
                 # Repeat for batch (2 samples per midi)
                 batch_size = 2

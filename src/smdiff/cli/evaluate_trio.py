@@ -22,6 +22,8 @@ from smdiff.utils.log_utils import load_model, config_log, log
 from smdiff.metrics.unconditional import evaluate_unconditional
 from smdiff.metrics.infilling import evaluate_infilling
 from smdiff.preprocessing.data import POP909TrioConverter, OneHotMelodyConverter
+from smdiff.masking import resolve_masking_id
+from smdiff.configs.loader import load_config
 from note_seq import midi_file_to_note_sequence
 from smdiff.cluster import get_scratch_dir
 from smdiff.registry import resolve_model_id
@@ -48,10 +50,14 @@ def main():
     parser.add_argument("--n_samples", type=int, default=100, help="Number of samples (uncond)")
     parser.add_argument("--n_midis", type=int, default=None, help="Limit number of MIDI files for infilling")
     parser.add_argument("--load_step", type=int, default=0, help="Checkpoint step to load (0 for best/latest)")
+    parser.add_argument("--strategy", type=str, default=None, help="Optional masking strategy for infill mask construction")
     parser.add_argument("--mask_token_start", type=int, default=256, help="Start token index for masking (time step)")
     parser.add_argument("--mask_token_end", type=int, default=512, help="End token index for masking (time step)")
     parser.add_argument("--tracks", type=str, default="trio", help="Data tracks config (trio or melody)")
     args = parser.parse_args()
+
+    if args.strategy:
+        resolve_masking_id(args.strategy)
     
     # 1. Prepare Output Directories
     metrics_dir = os.path.join(args.load_dir, "metrics")
@@ -78,6 +84,9 @@ def main():
         "--batch_size", str(args.batch_size),
         "--tracks", args.tracks
     ]
+
+    if args.strategy:
+        sys.argv += ["--masking_strategy", args.strategy]
     
     try:
         H = get_sampler_hparams('sample')
@@ -89,6 +98,8 @@ def main():
 
     H.load_dir = args.load_dir 
     H.model_id = model_id
+    H.masking_strategy = args.strategy
+    H.hierarchical_masking = load_config(model_id).get("hierarchical_masking", {})
     
     # 2. Load Model
     log("Loading model...")
@@ -217,7 +228,33 @@ def main():
                     
                 # Prepare Masked Input
                 masked_input = original_tokens.copy()
-                masked_input[mask_token_start:mask_token_end] = mask_token_id 
+                can_use_hierarchical = (
+                    args.strategy == "hierarchical"
+                    and args.tracks == "trio"
+                    and original_tokens.ndim == 2
+                    and hasattr(sampler, "build_hierarchical_mask")
+                )
+
+                if can_use_hierarchical:
+                    constrain_window = True
+                    if hasattr(sampler, "_get_hierarchical_config"):
+                        cfg = sampler._get_hierarchical_config(masked_input.shape[1])
+                        constrain_window = cfg.get("eval_constrain_to_window", True)
+
+                    x_ref = torch.tensor(masked_input[np.newaxis, :, :], dtype=torch.long, device=device)
+                    t_eval = torch.full((1,), sampler.num_timesteps, dtype=torch.long, device=device)
+                    hmask = sampler.build_hierarchical_mask(
+                        x_0=x_ref,
+                        t=t_eval,
+                        window_start=mask_token_start if constrain_window else None,
+                        window_end=mask_token_end if constrain_window else None,
+                        preserve_structure=False,
+                    )[0].cpu().numpy()
+
+                    for ch in range(masked_input.shape[1]):
+                        masked_input[hmask[:, ch], ch] = mask_token_id[ch]
+                else:
+                    masked_input[mask_token_start:mask_token_end] = mask_token_id
                 
                 batch_size = 2
                 x_T = np.tile(masked_input[np.newaxis, :, :], (batch_size, 1, 1))

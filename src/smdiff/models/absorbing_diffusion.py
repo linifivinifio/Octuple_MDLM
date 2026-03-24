@@ -26,6 +26,7 @@ class AbsorbingDiffusion(Sampler):
 
         # Partial masking strategy
         self.masking_strategy = getattr(H, 'masking_strategy', None)
+        self.hierarchical_masking = getattr(H, 'hierarchical_masking', {}) or {}
         self.loss_weights = getattr(H, "loss_weights", None)
 
         # Track loss at each time step for importance sampling
@@ -108,6 +109,103 @@ class AbsorbingDiffusion(Sampler):
         x_0_ignore[torch.bitwise_not(mask)] = -1
         return x_t, x_0_ignore, mask
 
+    def _get_hierarchical_config(self, num_channels):
+        cfg = self.hierarchical_masking if isinstance(self.hierarchical_masking, dict) else {}
+
+        priors = cfg.get("channel_priors")
+        if not isinstance(priors, list) or len(priors) != num_channels:
+            priors = [1.0] * num_channels
+
+        return {
+            "channel_priors": priors,
+            "structure_bias": float(cfg.get("structure_bias", 1.5)),
+            "content_bias": float(cfg.get("content_bias", 1.5)),
+            "schedule_midpoint": float(cfg.get("schedule_midpoint", 0.5)),
+            "schedule_steepness": float(cfg.get("schedule_steepness", 8.0)),
+            "bar_locality": float(cfg.get("bar_locality", 0.2)),
+            "eval_constrain_to_window": bool(cfg.get("eval_constrain_to_window", True)),
+        }
+
+    def _hierarchical_schedule(self, ratio, midpoint, steepness):
+        return torch.sigmoid((ratio - midpoint) * steepness)
+
+    def build_hierarchical_mask(self, x_0, t, window_start=None, window_end=None, preserve_structure=False):
+        """Build a continuous prior-guided hierarchical mask over (bar, channel) units."""
+        b, seq_len, num_channels = x_0.shape
+        device = x_0.device
+
+        if not torch.is_tensor(t):
+            t = torch.tensor(t, device=device, dtype=torch.long)
+        t = t.to(device)
+        if t.dim() == 0:
+            t = t.expand(b)
+        elif t.size(0) != b:
+            raise ValueError(f"Expected t to have batch size {b}, got {t.size(0)}")
+
+        cfg = self._get_hierarchical_config(num_channels)
+        priors = torch.tensor(cfg["channel_priors"], device=device, dtype=torch.float)
+
+        bar_indices = x_0[:, :, 0]
+        mask = torch.zeros_like(x_0, dtype=torch.bool, device=device)
+
+        for i in range(b):
+            sample_bars = torch.unique(bar_indices[i])
+            n_bars = int(sample_bars.numel())
+            if n_bars == 0:
+                continue
+
+            ratio = torch.clamp(t[i].float() / self.num_timesteps, 0.0, 1.0)
+            total_units = n_bars * num_channels
+            k = int(torch.round(total_units * ratio).item())
+            if k <= 0:
+                continue
+
+            schedule = self._hierarchical_schedule(ratio, cfg["schedule_midpoint"], cfg["schedule_steepness"])
+
+            channel_weights = priors.clone()
+            n_struct = min(2, num_channels)
+            channel_weights[:n_struct] *= (1.0 + (1.0 - schedule) * cfg["structure_bias"])
+            if num_channels > n_struct:
+                channel_weights[n_struct:] *= (1.0 + schedule * cfg["content_bias"])
+
+            locality = max(0.0, min(1.0, cfg["bar_locality"]))
+            bar_weights = torch.ones(n_bars, device=device, dtype=torch.float)
+            if locality > 0.0 and n_bars > 1:
+                center_idx = torch.randint(0, n_bars, (1,), device=device).item()
+                rel_pos = torch.arange(n_bars, device=device, dtype=torch.float)
+                dist = torch.abs(rel_pos - center_idx) / max(1.0, float(n_bars - 1))
+                sigma = max(0.1, 1.0 - 0.8 * locality)
+                gauss = torch.exp(-(dist ** 2) / (2.0 * sigma * sigma))
+                bar_weights = (1.0 - locality) + locality * gauss
+
+            unit_weights = torch.outer(bar_weights, channel_weights).reshape(-1)
+            if torch.all(unit_weights <= 0):
+                unit_weights = torch.ones_like(unit_weights)
+
+            k = min(k, int(unit_weights.numel()))
+            selected = torch.multinomial(unit_weights, num_samples=k, replacement=False)
+            selected_bar_idx = selected // num_channels
+            selected_channel_idx = selected % num_channels
+            selected_bars = sample_bars[selected_bar_idx]
+
+            for bar_val, att_idx in zip(selected_bars.tolist(), selected_channel_idx.tolist()):
+                pos_mask = (bar_indices[i] == bar_val)
+                mask[i, pos_mask, att_idx] = True
+
+        if window_start is not None or window_end is not None:
+            start = 0 if window_start is None else max(0, int(window_start))
+            end = seq_len if window_end is None else min(seq_len, int(window_end))
+            window_mask = torch.zeros((b, seq_len), dtype=torch.bool, device=device)
+            if end > start:
+                window_mask[:, start:end] = True
+            mask = mask & window_mask.unsqueeze(-1)
+
+        if preserve_structure and num_channels >= 2:
+            mask[:, :, 0] = False
+            mask[:, :, 1] = False
+
+        return mask
+
     def q_sample_partial(self, x_0, t):
         """
         Implementation of partial masking strategies for Octuple MIDI.
@@ -140,6 +238,15 @@ class AbsorbingDiffusion(Sampler):
         # (token-level/octuple masking).
         if current_strategy == 'random':
             return self.q_sample(x_0=x_0, t=t)
+
+        if current_strategy == 'hierarchical':
+            mask = self.build_hierarchical_mask(x_0=x_0, t=t)
+
+            for i in range(len(self.mask_id)):
+                x_t[:, :, i][mask[:, :, i]] = self.mask_id[i]
+
+            x_0_ignore[torch.bitwise_not(mask)] = -1
+            return x_t, x_0_ignore, mask
 
         if current_strategy in ['sync_bar', 'sync_bar_position']:            
             # Implementation of "Synchronized Masking" for learning sequentiality.
@@ -252,8 +359,6 @@ class AbsorbingDiffusion(Sampler):
             x_0_ignore[torch.bitwise_not(mask)] = -1
             return x_t, x_0_ignore, mask
 
-        candidate_mask = None
-        
         if current_strategy == 'bar_all':
             # Time-Dependent Bar Count
             # Select K bars where K ~ t/T * TotalBars
