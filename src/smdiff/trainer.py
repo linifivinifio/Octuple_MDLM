@@ -424,7 +424,7 @@ def main(H):
     log("Training loop finished. Performing final operations...")
     
     if len(current_losses_buffer) > 0:
-        flush_logs(H.train_steps, current_losses_buffer, current_vb_losses_buffer, 0.0)
+        flush_logs(H.train_steps, current_losses_buffer, current_vb_losses_buffer, current_mmd_losses_buffer, current_fmd_losses_buffer, 0.0)
 
     run_validation(H.train_steps)
     run_sampling(H.train_steps)
