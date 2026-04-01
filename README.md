@@ -83,6 +83,8 @@ Registered in `src/smdiff/losses/registry.py`:
 | Loss ID | Description |
 | -------- | ----------- |
 | `mmd_fmd_loss` | Default loss: plain CE backbone + multi-kernel MMD + minibatch Frechet-style regularization. |
+| `mmd_loss` | Pure MMD objective: optimize only raw MMD (CE/FMD excluded from optimization loss). |
+| `strict_fmd` | Pure strict Frechet objective against fixed training-data reference mean/covariance in token-proxy feature space. |
 | `plain_ce_loss` | Legacy baseline objective (same behavior as the historical CE/reweighted path). |
 | `plain_CE_loss` | Backward-compatible alias to `plain_ce_loss`. |
 | `elbo` | ELBO-style objective. |
