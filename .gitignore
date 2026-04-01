@@ -68,3 +68,4 @@ runs/
 *.swp
 *.swologs/
 scratch
+plots/single_sample_structure_no_normalization.png
