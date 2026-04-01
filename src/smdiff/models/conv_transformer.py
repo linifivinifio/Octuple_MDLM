@@ -5,6 +5,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def timestep_embedding(timesteps, dim, max_period=10000):
+    half = dim // 2
+    freqs = torch.exp(-math.log(max_period) * torch.arange(0, half, device=timesteps.device, dtype=torch.float) / max(half, 1))
+    args = timesteps.float().unsqueeze(1) * freqs.unsqueeze(0)
+    emb = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+    if dim % 2:
+        emb = F.pad(emb, (0, 1))
+    return emb
+
+
 class CausalSelfAttention(nn.Module):
     """
     A vanilla multi-head masked self-attention layer with a projection at the end.
@@ -134,6 +144,16 @@ class ConVormer(nn.Module):
 
         self.tok_emb = nn.ModuleList([nn.Embedding(vs, self.n_embd // self.conv_len) for vs in self.vocab_size])
         self.emb_red = nn.Linear(self.n_embd * len(self.vocab_size), self.n_embd)
+        sync_cfg = getattr(H, 'sync_bar_ddpm', {})
+        if not isinstance(sync_cfg, dict):
+            sync_cfg = {}
+        self.use_timestep_embedding = bool(sync_cfg.get('use_timestep_embedding', False))
+        if self.use_timestep_embedding:
+            self.time_mlp = nn.Sequential(
+                nn.Linear(self.n_embd, self.n_embd),
+                nn.SiLU(),
+                nn.Linear(self.n_embd, self.n_embd),
+            )
         self.pos_emb = nn.Parameter(torch.zeros(1, self.block_size, self.n_embd))
         self.bar_pos_emb = nn.Parameter(torch.zeros(1, self.conv_len, self.n_embd // self.conv_len))
         self.start_tok = nn.Parameter(torch.zeros(1, 1, self.n_embd))
@@ -160,12 +180,16 @@ class ConVormer(nn.Module):
     def forward(self, idx, t=None):
         # each index maps to a (learnable) vector
         bpe = self.bar_pos_emb[0, torch.arange(self.conv_len).repeat(idx.shape[1] // self.conv_len)]
-        token_embeddings = [t(idx[:, :, i]) + bpe for i, t in enumerate(self.tok_emb)]
+        token_embeddings = [tok_emb(idx[:, :, i]) + bpe for i, tok_emb in enumerate(self.tok_emb)]
         token_embeddings = [c(token_embeddings[i].transpose(1, 2)).transpose(1, 2) for i, c in enumerate(self.conv)]
         #act_fn is part of shared conv
         token_embeddings = torch.cat(token_embeddings,-1)
         token_embeddings = self.emb_red(token_embeddings)
         token_embeddings = F.relu(token_embeddings)
+
+        if self.use_timestep_embedding and t is not None:
+            time_emb = timestep_embedding(t, self.n_embd).to(token_embeddings.dtype)
+            token_embeddings = token_embeddings + self.time_mlp(time_emb).unsqueeze(1)
 
         if self.causal:
             token_embeddings = torch.cat(
@@ -173,11 +197,11 @@ class ConVormer(nn.Module):
                 dim=1
             )
 
-        t = token_embeddings.shape[1]
-        assert t <= self.block_size, "Cannot forward, model block size is exhausted."
+        seq_len = token_embeddings.shape[1]
+        assert seq_len <= self.block_size, "Cannot forward, model block size is exhausted."
         # each position maps to a (learnable) vector
 
-        position_embeddings = self.pos_emb[:, :t, :]
+        position_embeddings = self.pos_emb[:, :seq_len, :]
 
         x = token_embeddings + position_embeddings
         x = self.drop(x)
