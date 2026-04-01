@@ -28,9 +28,17 @@ from note_seq import midi_file_to_note_sequence
 from smdiff.cluster import get_scratch_dir
 
 
-def clean_sample(s):
+def clean_sample(s, eos_token=None):
+    """Remove padding and truncate at first EOS row when provided."""
     # Keep only rows where there is no subtoken that is -1
-    return s[~(s == -1).any(axis=1)]
+    cleaned = s[~(s == -1).any(axis=1)]
+
+    if eos_token is not None and cleaned.ndim == 2 and cleaned.shape[1] == len(eos_token):
+        eos_rows = np.where(np.all(cleaned == eos_token, axis=1))[0]
+        if len(eos_rows) > 0:
+            cleaned = cleaned[:eos_rows[0]]
+
+    return cleaned
 
 
 def load_octuple_dataset(path):
@@ -189,6 +197,7 @@ def main():
     H.load_dir = args.load_dir 
     H.masking_strategy = args.strategy
     H.hierarchical_masking = load_config(model_id).get("hierarchical_masking", {})
+    eos_token = np.array(H.codebook_size, dtype=np.int64) if getattr(H, 'eos', False) else None
     # Ensure Octuple masking strategy if relevant (usually loaded from H)
     
     # 2. Load Model
@@ -240,7 +249,7 @@ def main():
                 samples = samples.cpu().numpy()
             
             # remove -1 tokens
-            cleaned_batch = [clean_sample(s) for s in samples]
+            cleaned_batch = [clean_sample(s, eos_token=eos_token) for s in samples]
             
             all_samples.extend(cleaned_batch)
             
@@ -248,7 +257,7 @@ def main():
         
         # Save Samples to MIDI
         log("Saving samples...")
-        save_generated_samples(np.array(generated_samples), "trio_octuple", samples_dir, prefix="uncond")
+        save_generated_samples(generated_samples, "trio_octuple", samples_dir, prefix="uncond")
         
         # Calculate Metrics
         log("Calculating metrics...")
@@ -358,12 +367,13 @@ def main():
                     samples = samples.cpu().numpy()
                 
                 # Store
-                generated_samples.extend([s for s in samples])
+                cleaned_samples = [clean_sample(s, eos_token=eos_token) for s in samples]
+                generated_samples.extend(cleaned_samples)
                 original_samples_for_metrics.extend([original_tokens] * batch_size)
                 
                 # Just save individual batch here (convenience)
                 mid_name = os.path.splitext(os.path.basename(midi_path))[0]
-                save_generated_samples(samples, "trio_octuple", samples_dir, prefix=f"infill_{mid_name}")
+                save_generated_samples(cleaned_samples, "trio_octuple", samples_dir, prefix=f"infill_{mid_name}")
                 
                 count += 1
                 
