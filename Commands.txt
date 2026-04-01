@@ -93,6 +93,9 @@ CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model octuple_md
 # train_octuple_mask_hierarchical_mdlm_trio_octuple
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model octuple_mdlm --dataset_id pop909_trio_octuple --strategy hierarchical --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "Octuple_MDLM" --wandb_name "mdlm_hierarchical"
 
+# train_octuple_mask_hierarchical_mdlm_trio_octuple_mmd_loss (env_legacy)
+CUDA_VISIBLE_DEVICES=<gpu_id> conda run -n env_legacy python src/smdiff/cli/train.py --model octuple_mdlm --dataset_id pop909_trio_octuple --strategy hierarchical --loss_type mmd_loss --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "Octuple_MDLM" --wandb_name "mdlm_hierarchical_mmd_loss"
+
 # train_schmu_conv_trio
 CUDA_VISIBLE_DEVICES=<gpu_id> python3 src/smdiff/cli/train.py --model schmu_conv --dataset_id pop909_trio --batch_size 4 --epochs 100 --steps_per_log 10 --steps_per_eval 1000 --steps_per_sample 5000 --steps_per_checkpoint 5000 --seed 67 --wandb --wandb_project "octubert-music" --wandb_name "schmu-conv-trio"
 
