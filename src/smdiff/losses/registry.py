@@ -16,6 +16,16 @@ LOSS_REGISTRY: Dict[str, LossSpec] = {
         description="Cross entropy + multi-kernel MMD + minibatch Frechet-style regularization",
         notes="Default loss. Regularizers are weak by default.",
     ),
+    "mmd_loss": LossSpec(
+        id="mmd_loss",
+        description="Pure multi-kernel MMD objective (raw MMD only; CE/FMD excluded from optimization loss)",
+        notes="Uses the same feature construction as mmd_fmd_loss but optimizes only raw mmd_loss.",
+    ),
+    "strict_fmd": LossSpec(
+        id="strict_fmd",
+        description="Pure strict Fr\u00e9chet objective with fixed training-data reference mean/covariance in token-proxy feature space",
+        notes="Optimizes only strict Fr\u00e9chet distance (no CE/MMD terms).",
+    ),
     "plain_ce_loss": LossSpec(
         id="plain_ce_loss",
         description="Legacy plain CE objective (same behavior as historical reweighted_elbo path)",
@@ -40,6 +50,7 @@ LOSS_ALIASES: Dict[str, str] = {
     "plain_CE_loss": "plain_ce_loss",
     "plain_ce": "plain_ce_loss",
     "plain_celoss": "plain_ce_loss",
+    "mmd": "mmd_loss",
     "default": "mmd_fmd_loss",
 }
 
