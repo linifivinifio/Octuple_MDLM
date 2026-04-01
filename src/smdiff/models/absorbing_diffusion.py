@@ -28,28 +28,221 @@ class AbsorbingDiffusion(Sampler):
         # Partial masking strategy
         self.masking_strategy = getattr(H, 'masking_strategy', None)
         self.mmd_fmd_cfg = getattr(H, 'mmd_fmd', {}) or {}
+        self.strict_fmd_cfg = getattr(H, 'strict_fmd', {}) or {}
+        self.sync_bar_ddpm_cfg = getattr(H, 'sync_bar_ddpm', {}) or {}
         self.hierarchical_masking = getattr(H, 'hierarchical_masking', {}) or {}
         self.loss_weights = getattr(H, "loss_weights", None)
+        self._use_eos = bool(getattr(H, 'eos', False))
+        self._codebook_size = tuple(int(v) for v in H.codebook_size)
+        self.strict_fmd_transform_eps = float(self.strict_fmd_cfg.get("transform_eps", 1e-6))
+        self.strict_fmd_memory_size = int(self.strict_fmd_cfg.get("memory_size", 2048))
+        self.strict_fmd_enqueue_cap = int(self.strict_fmd_cfg.get("enqueue_cap", 0))
+        self.sync_bar_use_uncertainty_bias = bool(self.sync_bar_ddpm_cfg.get("use_uncertainty_bias", False))
+        self.sync_bar_uncertainty_alpha = float(self.sync_bar_ddpm_cfg.get("uncertainty_alpha", 1.0))
+        self.sync_bar_uncertainty_ema = float(self.sync_bar_ddpm_cfg.get("uncertainty_ema", 0.9))
+        self.sync_bar_min_full_bar_masks = int(self.sync_bar_ddpm_cfg.get("min_full_bar_masks", 1))
+        self.sync_bar_min_block_size = max(1, int(self.sync_bar_ddpm_cfg.get("min_block_size", 1)))
+        self.sync_bar_max_block_size = max(self.sync_bar_min_block_size, int(self.sync_bar_ddpm_cfg.get("max_block_size", 16)))
+        self.sync_bar_challenge_center = float(self.sync_bar_ddpm_cfg.get("challenge_center", 0.5))
+        self.sync_bar_challenge_width = max(1e-3, float(self.sync_bar_ddpm_cfg.get("challenge_width", 0.35)))
 
-        # Optional differentiable regularization terms (used by mmd_fmd_loss)
+        # Optional differentiable regularization terms (used by mmd_fmd_loss and mmd_loss)
         self.mmd_fmd_regularizer = MMDFMDRegularizer(
             mmd_weight=float(self.mmd_fmd_cfg.get("mmd_weight", 0.01)),
             fmd_weight=float(self.mmd_fmd_cfg.get("fmd_weight", 0.005)),
             bandwidths=self.mmd_fmd_cfg.get("bandwidths", [0.5, 1.0, 2.0, 4.0]),
             max_samples=int(self.mmd_fmd_cfg.get("max_samples", 4096)),
+            covariance_shrinkage_alpha=float(self.strict_fmd_cfg.get("covariance_shrinkage_alpha", 0.0)),
             eps=float(self.mmd_fmd_cfg.get("eps", 1e-6)),
         )
+
+        feature_dim = len(self._codebook_size)
+        self.register_buffer('strict_fmd_ref_mean', torch.zeros(feature_dim, dtype=torch.float32))
+        self.register_buffer('strict_fmd_ref_cov', torch.eye(feature_dim, dtype=torch.float32))
+        self.register_buffer('strict_fmd_ref_ready', torch.tensor(0, dtype=torch.uint8))
+
+        if self.strict_fmd_memory_size > 0:
+            self.register_buffer(
+                'strict_fmd_gen_memory',
+                torch.zeros((self.strict_fmd_memory_size, feature_dim), dtype=torch.float32),
+            )
+        else:
+            self.register_buffer('strict_fmd_gen_memory', torch.zeros((0, feature_dim), dtype=torch.float32))
+        self.register_buffer('strict_fmd_gen_mem_count', torch.tensor(0, dtype=torch.long))
+        self.register_buffer('strict_fmd_gen_mem_ptr', torch.tensor(0, dtype=torch.long))
+
+        if self.loss_type == 'strict_fmd':
+            ref_mean, ref_cov = self._compute_strict_fmd_reference_stats(getattr(H, 'dataset_path', None))
+            self.strict_fmd_ref_mean.copy_(ref_mean)
+            self.strict_fmd_ref_cov.copy_(ref_cov)
+            self.strict_fmd_ref_ready.fill_(1)
 
         # Track loss at each time step for importance sampling
         self.register_buffer('Lt_history', torch.zeros(self.num_timesteps+1))
         self.register_buffer('Lt_count', torch.zeros(self.num_timesteps+1))
         self.register_buffer('loss_history', torch.zeros(self.num_timesteps+1))
+        bar_vocab = int(self._codebook_size[0]) + (1 if self._use_eos else 0)
+        self.register_buffer('sync_bar_ddpm_bar_uncertainty', torch.zeros(bar_vocab, dtype=torch.float32))
+        self.register_buffer('sync_bar_ddpm_seen_count', torch.zeros(bar_vocab, dtype=torch.long))
         assert self.mask_schedule in ['random', 'fixed']
 
         self.task_queue = []
 
         # Set seed
         # torch.manual_seed(self.seed) # Handled globally in trainer
+
+    def _reference_channel_denominators(self):
+        if self._use_eos:
+            denoms = [max(v, 1) for v in self._codebook_size]
+        else:
+            denoms = [max(v - 1, 1) for v in self._codebook_size]
+        return np.array(denoms, dtype=np.float64)
+
+    def _iter_raw_sequences(self, data_array):
+        if data_array.ndim == 3:
+            for i in range(data_array.shape[0]):
+                yield data_array[i]
+            return
+
+        if data_array.ndim == 1:
+            for item in data_array:
+                yield item
+            return
+
+        raise ValueError(f"Unsupported dataset shape for strict_fmd: {data_array.shape}")
+
+    def _prepare_reference_sequence(self, raw_item):
+        x = raw_item
+
+        if isinstance(x, np.ndarray) and x.ndim == 0 and x.dtype == object:
+            x = x.item()
+
+        if isinstance(x, (str, np.str_)):
+            x = np.load(x, allow_pickle=True)
+
+        if not isinstance(x, np.ndarray) or x.dtype == object:
+            x = np.array(x, dtype=np.int64)
+
+        if x.ndim != 2:
+            return None
+
+        seq_len = self.shape[0]
+        channels = self.shape[1]
+        if x.shape[1] != channels:
+            return None
+
+        x = x.astype(np.int64, copy=False)
+        length = x.shape[0]
+
+        if length > seq_len:
+            x = x[:seq_len]
+        elif length < seq_len:
+            x_new = np.full((seq_len, channels), -1, dtype=np.int64)
+            x_new[:length] = x
+            if self._use_eos and length < seq_len:
+                eos_token = np.array(self._codebook_size, dtype=np.int64)
+                x_new[length] = eos_token
+            x = x_new
+
+        return x
+
+    def _compute_strict_fmd_reference_stats(self, dataset_path):
+        if not dataset_path:
+            raise ValueError("strict_fmd requires dataset_path to compute fixed reference statistics.")
+
+        data_array = np.load(dataset_path, allow_pickle=True)
+        denoms = self._reference_channel_denominators()
+        channels = len(self._codebook_size)
+        max_tokens = int(self.strict_fmd_cfg.get("reference_max_tokens", 0))
+        eps = float(self.strict_fmd_cfg.get("reference_eps", 1e-6))
+
+        sum_feat = np.zeros(channels, dtype=np.float64)
+        sum_outer = np.zeros((channels, channels), dtype=np.float64)
+        count = 0
+
+        for raw_item in self._iter_raw_sequences(data_array):
+            seq = self._prepare_reference_sequence(raw_item)
+            if seq is None:
+                continue
+
+            token_valid = np.any(seq != -1, axis=-1)
+            if not np.any(token_valid):
+                continue
+
+            feat = seq[token_valid].astype(np.float64) / denoms[None, :]
+            if max_tokens > 0 and count + feat.shape[0] > max_tokens:
+                keep = max_tokens - count
+                if keep <= 0:
+                    break
+                feat = feat[:keep]
+
+            count += feat.shape[0]
+            sum_feat += feat.sum(axis=0)
+            sum_outer += feat.T @ feat
+
+            if max_tokens > 0 and count >= max_tokens:
+                break
+
+        if count < 2:
+            raise ValueError(
+                f"strict_fmd requires at least 2 valid feature rows for reference stats, got {count}."
+            )
+
+        mean = sum_feat / float(count)
+        cov = (sum_outer - float(count) * np.outer(mean, mean)) / float(max(count - 1, 1))
+        cov = cov + np.eye(channels, dtype=np.float64) * eps
+
+        mean_t = torch.tensor(mean, dtype=torch.float32)
+        cov_t = torch.tensor(cov, dtype=torch.float32)
+        return mean_t, cov_t
+
+    def _get_strict_fmd_memory(self):
+        n = int(self.strict_fmd_gen_memory.shape[0])
+        if n == 0:
+            return self.strict_fmd_gen_memory
+
+        count = int(self.strict_fmd_gen_mem_count.item())
+        ptr = int(self.strict_fmd_gen_mem_ptr.item())
+        filled = min(count, n)
+        if filled == 0:
+            return self.strict_fmd_gen_memory[:0]
+
+        if count < n:
+            return self.strict_fmd_gen_memory[:filled]
+
+        if ptr == 0:
+            return self.strict_fmd_gen_memory
+
+        return torch.cat([
+            self.strict_fmd_gen_memory[ptr:],
+            self.strict_fmd_gen_memory[:ptr],
+        ], dim=0)
+
+    def _update_strict_fmd_memory(self, new_features: torch.Tensor, enqueue_cap: int = 0):
+        n = int(self.strict_fmd_gen_memory.shape[0])
+        if n == 0 or new_features.numel() == 0:
+            return
+
+        feats = new_features.detach().to(self.strict_fmd_gen_memory.device, dtype=torch.float32)
+        # Cap per-step memory enqueue rows to reduce queue-stat churn.
+        if enqueue_cap > 0 and feats.shape[0] > enqueue_cap:
+            idx = torch.randperm(feats.shape[0], device=feats.device)[:enqueue_cap]
+            feats = feats[idx]
+
+        if feats.shape[0] >= n:
+            feats = feats[-n:]
+
+        k = int(feats.shape[0])
+        ptr = int(self.strict_fmd_gen_mem_ptr.item())
+
+        first = min(k, n - ptr)
+        self.strict_fmd_gen_memory[ptr:ptr + first] = feats[:first]
+        rem = k - first
+        if rem > 0:
+            self.strict_fmd_gen_memory[:rem] = feats[first:]
+
+        self.strict_fmd_gen_mem_ptr.fill_((ptr + k) % n)
+        self.strict_fmd_gen_mem_count.add_(k)
 
     def sample_time(self, b, device, method='uniform'):
         if method == 'importance':
@@ -136,6 +329,87 @@ class AbsorbingDiffusion(Sampler):
             "bar_locality": float(cfg.get("bar_locality", 0.2)),
             "eval_constrain_to_window": bool(cfg.get("eval_constrain_to_window", True)),
         }
+
+    def _sync_bar_challenge(self, ratio: float) -> float:
+        # Bell-shaped challenge score centered at challenge_center.
+        dist = abs(ratio - self.sync_bar_challenge_center)
+        challenge = max(0.0, 1.0 - dist / self.sync_bar_challenge_width)
+        return min(challenge, 1.0)
+
+    def _sync_bar_pick_block_size(self, ratio: float, n_bars: int) -> int:
+        max_block = min(self.sync_bar_max_block_size, max(1, n_bars))
+        candidates = [c for c in [1, 2, 4, 8, 16] if self.sync_bar_min_block_size <= c <= max_block]
+        if not candidates:
+            return 1
+        if len(candidates) == 1:
+            return candidates[0]
+
+        challenge = self._sync_bar_challenge(ratio)
+        weights = []
+        for c in candidates:
+            if challenge >= 0.6 and c == max(candidates):
+                w = 4.0
+            elif challenge <= 0.2 and c == min(candidates):
+                w = 4.0
+            else:
+                target = min(candidates) + challenge * (max(candidates) - min(candidates))
+                w = math.exp(-abs(math.log2(c) - math.log2(max(target, 1.0))))
+            weights.append(w)
+
+        w_tensor = torch.tensor(weights, dtype=torch.float)
+        idx = torch.multinomial(w_tensor, num_samples=1, replacement=True).item()
+        return int(candidates[idx])
+
+    def _sync_bar_bar_weights(self, start_bar: int, n_bars: int, device: torch.device) -> torch.Tensor:
+        if not self.sync_bar_use_uncertainty_bias:
+            return torch.ones(n_bars, device=device, dtype=torch.float)
+
+        bar_ids = torch.arange(start_bar, start_bar + n_bars, device=device, dtype=torch.long)
+        unc_size = int(self.sync_bar_ddpm_bar_uncertainty.shape[0])
+        in_range = (bar_ids >= 0) & (bar_ids < unc_size)
+
+        weights = torch.ones(n_bars, device=device, dtype=torch.float)
+        if in_range.any():
+            vals = self.sync_bar_ddpm_bar_uncertainty[bar_ids[in_range]].float()
+            if vals.numel() > 0:
+                vals = vals - vals.min()
+                denom = vals.max().clamp(min=1e-6)
+                vals = vals / denom
+                weights[in_range] = 1.0 + self.sync_bar_uncertainty_alpha * vals
+        return torch.clamp(weights, min=1e-6)
+
+    @torch.no_grad()
+    def _update_sync_bar_uncertainty(self, x_0_hat_logits, x_0_ignore, x_0):
+        if self.masking_strategy != 'sync_bar_ddpm' or not self.sync_bar_use_uncertainty_bias:
+            return
+
+        bar_logits = x_0_hat_logits[0]  # (B, V, L)
+        probs = F.softmax(bar_logits.float(), dim=1)
+        entropy = -(probs * torch.log(probs.clamp(min=1e-8))).sum(dim=1)  # (B, L)
+
+        valid_mask = (x_0_ignore[:, :, 0] != -1)
+        bar_tokens = x_0[:, :, 0].long()
+        unc_size = int(self.sync_bar_ddpm_bar_uncertainty.shape[0])
+
+        for i in range(bar_tokens.shape[0]):
+            valid = valid_mask[i]
+            if not valid.any():
+                continue
+            bars_i = bar_tokens[i][valid]
+            ent_i = entropy[i][valid]
+            uniq_bars = torch.unique(bars_i)
+            for bval in uniq_bars:
+                b_idx = int(bval.item())
+                if b_idx < 0 or b_idx >= unc_size:
+                    continue
+                b_mask = (bars_i == bval)
+                if not b_mask.any():
+                    continue
+                b_ent = ent_i[b_mask].mean()
+                old = self.sync_bar_ddpm_bar_uncertainty[b_idx]
+                updated = self.sync_bar_uncertainty_ema * old + (1.0 - self.sync_bar_uncertainty_ema) * b_ent
+                self.sync_bar_ddpm_bar_uncertainty[b_idx] = updated
+                self.sync_bar_ddpm_seen_count[b_idx] += 1
 
     def _hierarchical_schedule(self, ratio, midpoint, steepness):
         return torch.sigmoid((ratio - midpoint) * steepness)
@@ -259,7 +533,7 @@ class AbsorbingDiffusion(Sampler):
             x_0_ignore[torch.bitwise_not(mask)] = -1
             return x_t, x_0_ignore, mask
 
-        if current_strategy in ['sync_bar', 'sync_bar_position']:            
+        if current_strategy in ['sync_bar', 'sync_bar_position', 'sync_bar_ddpm']:
             # Implementation of "Synchronized Masking" for learning sequentiality.
             # Optimized with lookup table.
             
@@ -269,13 +543,19 @@ class AbsorbingDiffusion(Sampler):
             if current_strategy == 'sync_bar_position':
                 block_channels = [0, 1]                       # Mask Bar & Pos in blocks
                 target_attributes_inner = torch.arange(2, 8, device=device) # Rest are units
+                adaptive_ddpm = False
+            elif current_strategy == 'sync_bar_ddpm':
+                block_channels = [0]                          # DDPM sync_bar variant masks bar channel in adaptive blocks
+                target_attributes_inner = torch.arange(1, 8, device=device) # Rest are 1-bar units
+                adaptive_ddpm = True
             else:
                 block_channels = [0]                          # Sync Bar default
                 target_attributes_inner = torch.arange(1, 8, device=device) # Rest are units
+                adaptive_ddpm = False
 
             num_attrs_inner = len(target_attributes_inner)
             
-            BAR_BLOCK_SIZE = 16     # I wanted to go for 13 but it goes against musical structure
+            BAR_BLOCK_SIZE = 16     # Legacy fixed block size for sync_bar variants
 
             # 1. Pre-calculate Lookup Table [Batch, MaxBar+1, Channels]
             max_bar = bar_indices.max().item()
@@ -304,21 +584,37 @@ class AbsorbingDiffusion(Sampler):
                 # --- A. Optimized Block Masking (Channels in block_channels) ---
                 nb = n_bars_batch[i].item()
                 start_bar = min_bars[i].item() 
-                num_blocks = math.ceil(nb / BAR_BLOCK_SIZE)
+                ratio_i = float(ratios[i].item())
+                block_size_i = self._sync_bar_pick_block_size(ratio_i, nb) if adaptive_ddpm else BAR_BLOCK_SIZE
+                num_blocks = math.ceil(nb / max(1, block_size_i))
+                bar_weights = self._sync_bar_bar_weights(start_bar=start_bar, n_bars=nb, device=device) if adaptive_ddpm else None
                 
                 for idx, ch in enumerate(block_channels):
                     tgt = targets_blocks[i, idx].item()
+                    if adaptive_ddpm:
+                        tgt = max(tgt, self.sync_bar_min_full_bar_masks)
                     if tgt > 0:
-                        # Randomly visit blocks to fill quota
-                        block_indices = torch.randperm(num_blocks, device=device).tolist()
+                        if adaptive_ddpm and bar_weights is not None:
+                            block_scores = torch.zeros(num_blocks, device=device, dtype=torch.float)
+                            for b_idx in range(num_blocks):
+                                rel_start = b_idx * block_size_i
+                                rel_end = min(rel_start + block_size_i, nb)
+                                block_scores[b_idx] = bar_weights[rel_start:rel_end].mean()
+                            if torch.all(block_scores <= 0):
+                                block_indices = torch.randperm(num_blocks, device=device).tolist()
+                            else:
+                                block_indices = torch.multinomial(block_scores, num_samples=num_blocks, replacement=False).tolist()
+                        else:
+                            # Randomly visit blocks to fill quota
+                            block_indices = torch.randperm(num_blocks, device=device).tolist()
                         
                         needed = tgt
                         for b_idx in block_indices:
                             if needed <= 0: break
                             
                             # Relative indices (0..N)
-                            rel_start = b_idx * BAR_BLOCK_SIZE
-                            rel_end = min(rel_start + BAR_BLOCK_SIZE, nb)
+                            rel_start = b_idx * block_size_i
+                            rel_end = min(rel_start + block_size_i, nb)
                             block_len = rel_end - rel_start
                             
                             # Absolute indices for lookup table
@@ -342,8 +638,14 @@ class AbsorbingDiffusion(Sampler):
                     start_bar = min_bars[i].item()
                     total_units = nb * num_attrs_inner
                     
-                    # Sample k_units indices
-                    perm = torch.randperm(total_units, device=device)[:k_units]
+                    if adaptive_ddpm:
+                        bar_weights = self._sync_bar_bar_weights(start_bar=start_bar, n_bars=nb, device=device)
+                        unit_weights = bar_weights.repeat_interleave(num_attrs_inner)
+                        n_samples = min(k_units, int(unit_weights.numel()))
+                        perm = torch.multinomial(unit_weights, num_samples=n_samples, replacement=False)
+                    else:
+                        # Sample k_units indices
+                        perm = torch.randperm(total_units, device=device)[:k_units]
                     
                     # Decode indices to (Bar, Attribute)
                     rel_bar_indices = perm.div(num_attrs_inner, rounding_mode='floor')
@@ -479,8 +781,10 @@ class AbsorbingDiffusion(Sampler):
         x_t_input[x_t == -1] = 0
 
         # sample p(x_0 | x_t)
-        x_0_hat_logits = self._denoise_fn(x_t_input, t=t)
-        x_0_hat_logits = [el.permute(0, 2, 1) for el in x_0_hat_logits]
+        raw_logits = self._denoise_fn(x_t_input, t=t)
+        if self.training and self.masking_strategy == 'sync_bar_ddpm' and self.sync_bar_use_uncertainty_bias:
+            self._update_sync_bar_uncertainty(raw_logits, x_0_ignore, x_0)
+        x_0_hat_logits = [el.permute(0, 2, 1) for el in raw_logits]
         
         cross_entropy_loss_per_channel = [F.cross_entropy(x, x_0_ignore[:, :, i], ignore_index=-1, reduction='none').sum(1)
                               for i, x in enumerate(x_0_hat_logits)]
@@ -509,13 +813,30 @@ class AbsorbingDiffusion(Sampler):
         mmd_loss = torch.tensor(0.0, device=device)
         fmd_loss = torch.tensor(0.0, device=device)
         reg_total = torch.tensor(0.0, device=device)
-        if self.loss_type == 'mmd_fmd_loss':
+        strict_fmd_loss = torch.tensor(0.0, device=device)
+        if self.loss_type in ['mmd_fmd_loss', 'mmd_loss']:
             valid_mask = (x_0_ignore != -1)
             reg_total, mmd_loss, fmd_loss = self.mmd_fmd_regularizer(
                 x_0_hat_logits,
                 x_0,
                 valid_mask,
             )
+        elif self.loss_type == 'strict_fmd':
+            if int(self.strict_fmd_ref_ready.item()) == 0:
+                raise RuntimeError("strict_fmd reference statistics are not initialized.")
+            valid_mask = (x_0_ignore != -1)
+            memory_features = self._get_strict_fmd_memory()
+            strict_fmd_loss, current_pred_features = self.mmd_fmd_regularizer.strict_frechet_to_reference_with_memory(
+                x_0_hat_logits,
+                valid_mask,
+                self.strict_fmd_ref_mean,
+                self.strict_fmd_ref_cov,
+                memory_features=memory_features,
+            )
+            # Keep strict_fmd memory fixed during eval so validation does not shift train dynamics.
+            if self.training:
+                self._update_strict_fmd_memory(current_pred_features, enqueue_cap=self.strict_fmd_enqueue_cap)
+            fmd_loss = strict_fmd_loss
 
         # --- Test: Structure Regression Loss (Bar & Position) ---
         aux_loss = 0.0
@@ -562,6 +883,12 @@ class AbsorbingDiffusion(Sampler):
             denom = mask.float().sum(1)
             denom[denom == 0] = 1  # prevent divide by 0 errors.
             loss = cross_entropy_loss / denom
+        elif self.loss_type == 'mmd_loss':
+            # Pure MMD objective: optimize raw MMD only, without CE/FMD contributions.
+            loss = mmd_loss
+        elif self.loss_type == 'strict_fmd':
+            # Pure strict Fréchet objective against fixed training-data reference stats.
+            loss = torch.sqrt(strict_fmd_loss + self.strict_fmd_transform_eps)
         elif self.loss_type in ['plain_ce_loss', 'reweighted_elbo', 'mmd_fmd_loss']:
             # Fix: Use (T+1) to ensure weight is never exactly 0 at t=T
             weight = (1 - (t / (self.num_timesteps + 1)))
@@ -570,8 +897,9 @@ class AbsorbingDiffusion(Sampler):
         else:
             raise ValueError
 
-        # Add Auxiliary Structure Losses
-        loss = loss + aux_loss
+        # Add auxiliary structure losses for CE/ELBO-style objectives only.
+        if self.loss_type not in ['mmd_loss', 'strict_fmd']:
+            loss = loss + aux_loss
         if self.loss_type == 'mmd_fmd_loss':
             loss = loss + reg_total
 
