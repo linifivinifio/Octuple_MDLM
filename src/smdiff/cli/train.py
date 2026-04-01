@@ -113,7 +113,7 @@ def main():
     parser.add_argument("--strategy", type=str, default=None,
                         help="Optional masking/training strategy id (passed as masking_strategy)")
     parser.add_argument("--loss_type", type=str, default=None,
-                        help="Loss id from LOSS_REGISTRY (e.g., mmd_fmd_loss, plain_CE_loss, elbo, mlm)")
+                        help="Loss id from LOSS_REGISTRY (e.g., mmd_fmd_loss, mmd_loss, strict_fmd, plain_CE_loss, elbo, mlm)")
 
     # Common training settings (mapped to legacy parser)
     parser.add_argument("--dataset_path", type=str, default=None)
@@ -218,6 +218,8 @@ def main():
     H.grad_acc = ns.grad_acc
     H.loss_type = cfg.get("loss_type", "mmd_fmd_loss")
     H.mmd_fmd = cfg.get("mmd_fmd", {})
+    H.strict_fmd = cfg.get("strict_fmd", {})
+    H.sync_bar_ddpm = cfg.get("sync_bar_ddpm", {})
     H.hierarchical_masking = cfg.get("hierarchical_masking", {})
 
     H.wandb = ns.wandb
