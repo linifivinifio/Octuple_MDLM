@@ -23,9 +23,26 @@ mmd_fmd:
   bandwidths: [0.5, 1.0, 2.0, 4.0]
   max_samples: 4096
   eps: 1.0e-6
+strict_fmd:
+  reference_eps: 1.0e-6
+  reference_max_tokens: 0   # 0 = use all valid tokens in the training dataset
+  memory_size: 2048         # generated-feature queue size for running strict_fmd stats
+  covariance_shrinkage_alpha: 0.002  # shrink generated covariance toward scaled identity
+  enqueue_cap: 256          # max generated-feature rows enqueued per train step
+  transform_eps: 1.0e-6     # optimize sqrt(strict_fmd + transform_eps)
+sync_bar_ddpm:
+  use_timestep_embedding: false  # enable DDPM denoiser timestep conditioning (additive bias)
+  use_uncertainty_bias: false    # bias bar sampling toward harder bars from previous-step uncertainty
+  uncertainty_alpha: 1.0         # strength of uncertainty weighting
+  uncertainty_ema: 0.9           # smoothing for bar-level uncertainty state
+  min_full_bar_masks: 1          # guarantee at least one full bar mask for bar token at easy timesteps
+  min_block_size: 1              # smallest adaptive block size (bars)
+  max_block_size: 16             # largest adaptive block size (bars)
+  challenge_center: 0.5          # midpoint of most challenging timesteps in t/T
+  challenge_width: 0.35          # width of challenging region for larger block preference
 masking_strategy: null
 hierarchical_masking:
-  channel_priors: [1.6, 1.6, 1.0, 0.9, 0.9, 0.9, 1.0, 0.9]
+  channel_priors: [1.527, 1.527, 0.7, 1.384, 1.169, 1.043, 0.7, 1.018]  # [1.527, 1.527, 0.7, 1.384, 1.169, 1.043, 0.7, 1.018], [1.45, 1.45, 0.8, 1.30, 1.12, 1.02, 0.8, 1.00], [1.6, 1.6, 1.0, 0.9, 0.9, 0.9, 1.0, 0.9]
   structure_bias: 1.5
   content_bias: 1.5
   schedule_midpoint: 0.5
