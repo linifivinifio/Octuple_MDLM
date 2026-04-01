@@ -32,6 +32,15 @@ strict_fmd:
   transform_eps: 1.0e-6     # optimize sqrt(strict_fmd + transform_eps)
 sync_bar_ddpm:
   use_timestep_embedding: false  # enable DDPM denoiser timestep conditioning (additive bias)
+  use_uncertainty_bias: true    # bias bar sampling toward harder bars from previous-step uncertainty
+  uncertainty_alpha: 1.0         # strength of uncertainty weighting
+  uncertainty_ema: 0.9           # smoothing for bar-level uncertainty state
+  min_full_bar_masks: 1          # guarantee at least one full bar mask for bar token at easy timesteps
+  min_block_size: 1              # smallest adaptive block size (bars)
+  max_block_size: 16             # largest adaptive block size (bars)
+  challenge_center: 0.5          # midpoint of most challenging timesteps in t/T
+  challenge_width: 0.35          # width of challenging region for larger block preference
+sync_bar_mdlm:
   use_uncertainty_bias: false    # bias bar sampling toward harder bars from previous-step uncertainty
   uncertainty_alpha: 1.0         # strength of uncertainty weighting
   uncertainty_ema: 0.9           # smoothing for bar-level uncertainty state
@@ -40,6 +49,19 @@ sync_bar_ddpm:
   max_block_size: 16             # largest adaptive block size (bars)
   challenge_center: 0.5          # midpoint of most challenging timesteps in t/T
   challenge_width: 0.35          # width of challenging region for larger block preference
+  deterministic_teacher_forcing: true  # deterministic hierarchical teacher masks at step 0
+  curriculum_start_step: 2500   # keep deterministic teacher forcing through LR warmup
+  curriculum_warmup_steps: 2500 # linear warmup from teacher masks to stochastic adaptive masks
+  teacher_structure_bias: 1.5    # structure channels emphasis during teacher forcing
+  teacher_content_bias: 1.5      # content channels emphasis during teacher forcing
+  teacher_schedule_midpoint: 0.5 # sigmoid midpoint for teacher mask unit weighting
+  teacher_schedule_steepness: 8.0
+  teacher_bar_locality: 0.2
+octuple_mdlm:
+  use_dual_stage_embeddings: false  # add progress and uncertainty bucket embeddings on top of absolute stage embedding
+  progress_buckets: 16
+  uncertainty_buckets: 8
+  use_curriculum_weight: true
 masking_strategy: null
 hierarchical_masking:
   channel_priors: [1.527, 1.527, 0.7, 1.384, 1.169, 1.043, 0.7, 1.018]  # [1.527, 1.527, 0.7, 1.384, 1.169, 1.043, 0.7, 1.018], [1.45, 1.45, 0.8, 1.30, 1.12, 1.02, 0.8, 1.00], [1.6, 1.6, 1.0, 0.9, 0.9, 0.9, 1.0, 0.9]

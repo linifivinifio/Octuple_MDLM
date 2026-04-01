@@ -30,6 +30,8 @@ class AbsorbingDiffusion(Sampler):
         self.mmd_fmd_cfg = getattr(H, 'mmd_fmd', {}) or {}
         self.strict_fmd_cfg = getattr(H, 'strict_fmd', {}) or {}
         self.sync_bar_ddpm_cfg = getattr(H, 'sync_bar_ddpm', {}) or {}
+        self.sync_bar_mdlm_cfg = getattr(H, 'sync_bar_mdlm', {}) or {}
+        self.octuple_mdlm_cfg = getattr(H, 'octuple_mdlm', {}) or {}
         self.hierarchical_masking = getattr(H, 'hierarchical_masking', {}) or {}
         self.loss_weights = getattr(H, "loss_weights", None)
         self._use_eos = bool(getattr(H, 'eos', False))
@@ -45,6 +47,29 @@ class AbsorbingDiffusion(Sampler):
         self.sync_bar_max_block_size = max(self.sync_bar_min_block_size, int(self.sync_bar_ddpm_cfg.get("max_block_size", 16)))
         self.sync_bar_challenge_center = float(self.sync_bar_ddpm_cfg.get("challenge_center", 0.5))
         self.sync_bar_challenge_width = max(1e-3, float(self.sync_bar_ddpm_cfg.get("challenge_width", 0.35)))
+
+        self.sync_bar_mdlm_use_uncertainty_bias = bool(self.sync_bar_mdlm_cfg.get("use_uncertainty_bias", self.sync_bar_use_uncertainty_bias))
+        self.sync_bar_mdlm_uncertainty_alpha = float(self.sync_bar_mdlm_cfg.get("uncertainty_alpha", self.sync_bar_uncertainty_alpha))
+        self.sync_bar_mdlm_uncertainty_ema = float(self.sync_bar_mdlm_cfg.get("uncertainty_ema", self.sync_bar_uncertainty_ema))
+        self.sync_bar_mdlm_min_full_bar_masks = int(self.sync_bar_mdlm_cfg.get("min_full_bar_masks", self.sync_bar_min_full_bar_masks))
+        self.sync_bar_mdlm_min_block_size = max(1, int(self.sync_bar_mdlm_cfg.get("min_block_size", self.sync_bar_min_block_size)))
+        self.sync_bar_mdlm_max_block_size = max(self.sync_bar_mdlm_min_block_size, int(self.sync_bar_mdlm_cfg.get("max_block_size", self.sync_bar_max_block_size)))
+        self.sync_bar_mdlm_challenge_center = float(self.sync_bar_mdlm_cfg.get("challenge_center", self.sync_bar_challenge_center))
+        self.sync_bar_mdlm_challenge_width = max(1e-3, float(self.sync_bar_mdlm_cfg.get("challenge_width", self.sync_bar_challenge_width)))
+        self.sync_bar_mdlm_deterministic_teacher = bool(self.sync_bar_mdlm_cfg.get("deterministic_teacher_forcing", True))
+        self.sync_bar_mdlm_curriculum_warmup_steps = max(1, int(self.sync_bar_mdlm_cfg.get("curriculum_warmup_steps", 10000)))
+        self.sync_bar_mdlm_teacher_structure_bias = float(self.sync_bar_mdlm_cfg.get("teacher_structure_bias", 1.5))
+        self.sync_bar_mdlm_teacher_content_bias = float(self.sync_bar_mdlm_cfg.get("teacher_content_bias", 1.5))
+        self.sync_bar_mdlm_teacher_schedule_midpoint = float(self.sync_bar_mdlm_cfg.get("teacher_schedule_midpoint", 0.5))
+        self.sync_bar_mdlm_teacher_schedule_steepness = float(self.sync_bar_mdlm_cfg.get("teacher_schedule_steepness", 8.0))
+        self.sync_bar_mdlm_teacher_bar_locality = float(self.sync_bar_mdlm_cfg.get("teacher_bar_locality", 0.2))
+        self.sync_bar_mdlm_curriculum_start_step = max(
+            0,
+            int(self.sync_bar_mdlm_cfg.get("curriculum_start_step", getattr(H, "warmup_iters", 10000) or 10000)),
+        )
+
+        self.mdlm_progress_buckets = max(2, int(self.octuple_mdlm_cfg.get("progress_buckets", 16)))
+        self.mdlm_uncertainty_buckets = max(2, int(self.octuple_mdlm_cfg.get("uncertainty_buckets", 8)))
 
         # Optional differentiable regularization terms (used by mmd_fmd_loss and mmd_loss)
         self.mmd_fmd_regularizer = MMDFMDRegularizer(
@@ -84,6 +109,7 @@ class AbsorbingDiffusion(Sampler):
         bar_vocab = int(self._codebook_size[0]) + (1 if self._use_eos else 0)
         self.register_buffer('sync_bar_ddpm_bar_uncertainty', torch.zeros(bar_vocab, dtype=torch.float32))
         self.register_buffer('sync_bar_ddpm_seen_count', torch.zeros(bar_vocab, dtype=torch.long))
+        self.register_buffer('sync_bar_mdlm_step', torch.tensor(0, dtype=torch.long))
         assert self.mask_schedule in ['random', 'fixed']
 
         self.task_queue = []
@@ -330,21 +356,29 @@ class AbsorbingDiffusion(Sampler):
             "eval_constrain_to_window": bool(cfg.get("eval_constrain_to_window", True)),
         }
 
-    def _sync_bar_challenge(self, ratio: float) -> float:
+    def _sync_bar_challenge(self, ratio: float, center: float | None = None, width: float | None = None) -> float:
         # Bell-shaped challenge score centered at challenge_center.
-        dist = abs(ratio - self.sync_bar_challenge_center)
-        challenge = max(0.0, 1.0 - dist / self.sync_bar_challenge_width)
+        if center is None:
+            center = self.sync_bar_challenge_center
+        if width is None:
+            width = self.sync_bar_challenge_width
+        dist = abs(ratio - center)
+        challenge = max(0.0, 1.0 - dist / max(width, 1e-3))
         return min(challenge, 1.0)
 
-    def _sync_bar_pick_block_size(self, ratio: float, n_bars: int) -> int:
-        max_block = min(self.sync_bar_max_block_size, max(1, n_bars))
-        candidates = [c for c in [1, 2, 4, 8, 16] if self.sync_bar_min_block_size <= c <= max_block]
+    def _sync_bar_pick_block_size(self, ratio: float, n_bars: int, min_block_size: int | None = None, max_block_size: int | None = None, center: float | None = None, width: float | None = None) -> int:
+        if min_block_size is None:
+            min_block_size = self.sync_bar_min_block_size
+        if max_block_size is None:
+            max_block_size = self.sync_bar_max_block_size
+        max_block = min(max_block_size, max(1, n_bars))
+        candidates = [c for c in [1, 2, 4, 8, 16] if min_block_size <= c <= max_block]
         if not candidates:
             return 1
         if len(candidates) == 1:
             return candidates[0]
 
-        challenge = self._sync_bar_challenge(ratio)
+        challenge = self._sync_bar_challenge(ratio, center=center, width=width)
         weights = []
         for c in candidates:
             if challenge >= 0.6 and c == max(candidates):
@@ -360,8 +394,13 @@ class AbsorbingDiffusion(Sampler):
         idx = torch.multinomial(w_tensor, num_samples=1, replacement=True).item()
         return int(candidates[idx])
 
-    def _sync_bar_bar_weights(self, start_bar: int, n_bars: int, device: torch.device) -> torch.Tensor:
-        if not self.sync_bar_use_uncertainty_bias:
+    def _sync_bar_bar_weights(self, start_bar: int, n_bars: int, device: torch.device, use_uncertainty_bias: bool | None = None, uncertainty_alpha: float | None = None) -> torch.Tensor:
+        if use_uncertainty_bias is None:
+            use_uncertainty_bias = self.sync_bar_use_uncertainty_bias
+        if uncertainty_alpha is None:
+            uncertainty_alpha = self.sync_bar_uncertainty_alpha
+
+        if not use_uncertainty_bias:
             return torch.ones(n_bars, device=device, dtype=torch.float)
 
         bar_ids = torch.arange(start_bar, start_bar + n_bars, device=device, dtype=torch.long)
@@ -375,12 +414,101 @@ class AbsorbingDiffusion(Sampler):
                 vals = vals - vals.min()
                 denom = vals.max().clamp(min=1e-6)
                 vals = vals / denom
-                weights[in_range] = 1.0 + self.sync_bar_uncertainty_alpha * vals
+                weights[in_range] = 1.0 + uncertainty_alpha * vals
         return torch.clamp(weights, min=1e-6)
+
+    def _sync_bar_mdlm_curriculum_weight(self) -> float:
+        if not self.sync_bar_mdlm_deterministic_teacher:
+            return 1.0
+        step = float(self.sync_bar_mdlm_step.item())
+        start_step = float(max(0, self.sync_bar_mdlm_curriculum_start_step))
+        if step < start_step:
+            return 0.0
+        warmup = float(max(1, self.sync_bar_mdlm_curriculum_warmup_steps))
+        return float(max(0.0, min(1.0, (step - start_step) / warmup)))
+
+    def _build_sync_bar_mdlm_teacher_mask(self, x_0, t):
+        b, seq_len, num_channels = x_0.shape
+        device = x_0.device
+        bar_indices = x_0[:, :, 0]
+        mask = torch.zeros_like(x_0, dtype=torch.bool, device=device)
+
+        for i in range(b):
+            u_bars = torch.unique(bar_indices[i])
+            n_bars = int(u_bars.numel())
+            if n_bars <= 0:
+                continue
+
+            ratio = torch.clamp(t[i].float() / self.num_timesteps, 0.0, 1.0)
+            total_units = n_bars * num_channels
+            k = int(torch.round(total_units * ratio).item())
+            if k <= 0:
+                continue
+
+            sched = self._hierarchical_schedule(
+                ratio,
+                self.sync_bar_mdlm_teacher_schedule_midpoint,
+                self.sync_bar_mdlm_teacher_schedule_steepness,
+            )
+
+            channel_weights = torch.ones(num_channels, device=device, dtype=torch.float)
+            n_struct = min(2, num_channels)
+            channel_weights[:n_struct] *= (1.0 + (1.0 - sched) * self.sync_bar_mdlm_teacher_structure_bias)
+            if num_channels > n_struct:
+                channel_weights[n_struct:] *= (1.0 + sched * self.sync_bar_mdlm_teacher_content_bias)
+
+            locality = max(0.0, min(1.0, self.sync_bar_mdlm_teacher_bar_locality))
+            bar_weights = torch.ones(n_bars, device=device, dtype=torch.float)
+            if locality > 0.0 and n_bars > 1:
+                center_idx = n_bars // 2
+                rel_pos = torch.arange(n_bars, device=device, dtype=torch.float)
+                dist = torch.abs(rel_pos - center_idx) / max(1.0, float(n_bars - 1))
+                sigma = max(0.1, 1.0 - 0.8 * locality)
+                gauss = torch.exp(-(dist ** 2) / (2.0 * sigma * sigma))
+                bar_weights = (1.0 - locality) + locality * gauss
+
+            unit_scores = torch.outer(bar_weights, channel_weights).reshape(-1)
+            k = min(k, int(unit_scores.numel()))
+            selected = torch.topk(unit_scores, k=k, largest=True).indices
+
+            bar_idx = selected // num_channels
+            ch_idx = selected % num_channels
+            selected_bars = u_bars[bar_idx]
+
+            for bar_val, att_idx in zip(selected_bars.tolist(), ch_idx.tolist()):
+                pos_mask = (bar_indices[i] == bar_val)
+                mask[i, pos_mask, int(att_idx)] = True
+
+        return mask
+
+    def _sync_bar_mdlm_conditioning_buckets(self, t):
+        progress = torch.clamp(t.float() / float(self.num_timesteps), 0.0, 1.0)
+        progress_bucket = torch.round(progress * float(self.mdlm_progress_buckets - 1)).long()
+
+        seen = self.sync_bar_ddpm_seen_count > 0
+        if seen.any():
+            vals = self.sync_bar_ddpm_bar_uncertainty[seen].float()
+            vals = vals - vals.min()
+            denom = vals.max().clamp(min=1e-6)
+            unc_scalar = (vals / denom).mean()
+        else:
+            unc_scalar = torch.tensor(0.0, device=t.device)
+
+        unc_bucket_id = int(torch.round(torch.clamp(unc_scalar, 0.0, 1.0) * float(self.mdlm_uncertainty_buckets - 1)).item())
+        uncertainty_bucket = torch.full_like(progress_bucket, fill_value=unc_bucket_id)
+
+        curriculum_weight = torch.full_like(progress, fill_value=self._sync_bar_mdlm_curriculum_weight())
+        return progress_bucket, uncertainty_bucket, curriculum_weight
 
     @torch.no_grad()
     def _update_sync_bar_uncertainty(self, x_0_hat_logits, x_0_ignore, x_0):
-        if self.masking_strategy != 'sync_bar_ddpm' or not self.sync_bar_use_uncertainty_bias:
+        if self.masking_strategy == 'sync_bar_ddpm':
+            if not self.sync_bar_use_uncertainty_bias:
+                return
+        elif self.masking_strategy == 'sync_bar_mdlm':
+            if not self.sync_bar_mdlm_use_uncertainty_bias:
+                return
+        else:
             return
 
         bar_logits = x_0_hat_logits[0]  # (B, V, L)
@@ -392,11 +520,12 @@ class AbsorbingDiffusion(Sampler):
         unc_size = int(self.sync_bar_ddpm_bar_uncertainty.shape[0])
 
         for i in range(bar_tokens.shape[0]):
-            valid = valid_mask[i]
+            seq_len = min(entropy.size(1), valid_mask.size(1), bar_tokens.size(1))
+            valid = valid_mask[i, :seq_len]
             if not valid.any():
                 continue
-            bars_i = bar_tokens[i][valid]
-            ent_i = entropy[i][valid]
+            bars_i = bar_tokens[i, :seq_len][valid]
+            ent_i = entropy[i, :seq_len][valid]
             uniq_bars = torch.unique(bars_i)
             for bval in uniq_bars:
                 b_idx = int(bval.item())
@@ -407,7 +536,8 @@ class AbsorbingDiffusion(Sampler):
                     continue
                 b_ent = ent_i[b_mask].mean()
                 old = self.sync_bar_ddpm_bar_uncertainty[b_idx]
-                updated = self.sync_bar_uncertainty_ema * old + (1.0 - self.sync_bar_uncertainty_ema) * b_ent
+                ema = self.sync_bar_mdlm_uncertainty_ema if self.masking_strategy == 'sync_bar_mdlm' else self.sync_bar_uncertainty_ema
+                updated = ema * old + (1.0 - ema) * b_ent
                 self.sync_bar_ddpm_bar_uncertainty[b_idx] = updated
                 self.sync_bar_ddpm_seen_count[b_idx] += 1
 
@@ -533,7 +663,7 @@ class AbsorbingDiffusion(Sampler):
             x_0_ignore[torch.bitwise_not(mask)] = -1
             return x_t, x_0_ignore, mask
 
-        if current_strategy in ['sync_bar', 'sync_bar_position', 'sync_bar_ddpm']:
+        if current_strategy in ['sync_bar', 'sync_bar_position', 'sync_bar_ddpm', 'sync_bar_mdlm']:
             # Implementation of "Synchronized Masking" for learning sequentiality.
             # Optimized with lookup table.
             
@@ -544,14 +674,54 @@ class AbsorbingDiffusion(Sampler):
                 block_channels = [0, 1]                       # Mask Bar & Pos in blocks
                 target_attributes_inner = torch.arange(2, 8, device=device) # Rest are units
                 adaptive_ddpm = False
+                use_uncertainty_bias = False
+                uncertainty_alpha = 0.0
+                min_full_bar_masks = 0
+                block_min = self.sync_bar_min_block_size
+                block_max = self.sync_bar_max_block_size
+                challenge_center = self.sync_bar_challenge_center
+                challenge_width = self.sync_bar_challenge_width
+                curriculum_weight = 1.0
+                teacher_mask = None
             elif current_strategy == 'sync_bar_ddpm':
                 block_channels = [0]                          # DDPM sync_bar variant masks bar channel in adaptive blocks
                 target_attributes_inner = torch.arange(1, 8, device=device) # Rest are 1-bar units
                 adaptive_ddpm = True
+                use_uncertainty_bias = self.sync_bar_use_uncertainty_bias
+                uncertainty_alpha = self.sync_bar_uncertainty_alpha
+                min_full_bar_masks = self.sync_bar_min_full_bar_masks
+                block_min = self.sync_bar_min_block_size
+                block_max = self.sync_bar_max_block_size
+                challenge_center = self.sync_bar_challenge_center
+                challenge_width = self.sync_bar_challenge_width
+                curriculum_weight = 1.0
+                teacher_mask = None
+            elif current_strategy == 'sync_bar_mdlm':
+                block_channels = [0]                          # MDLM sync_bar variant masks bar channel in adaptive blocks
+                target_attributes_inner = torch.arange(1, 8, device=device) # Rest are 1-bar units
+                adaptive_ddpm = True
+                use_uncertainty_bias = self.sync_bar_mdlm_use_uncertainty_bias
+                uncertainty_alpha = self.sync_bar_mdlm_uncertainty_alpha
+                min_full_bar_masks = self.sync_bar_mdlm_min_full_bar_masks
+                block_min = self.sync_bar_mdlm_min_block_size
+                block_max = self.sync_bar_mdlm_max_block_size
+                challenge_center = self.sync_bar_mdlm_challenge_center
+                challenge_width = self.sync_bar_mdlm_challenge_width
+                curriculum_weight = self._sync_bar_mdlm_curriculum_weight()
+                teacher_mask = self._build_sync_bar_mdlm_teacher_mask(x_0, t) if curriculum_weight < 1.0 else None
             else:
                 block_channels = [0]                          # Sync Bar default
                 target_attributes_inner = torch.arange(1, 8, device=device) # Rest are units
                 adaptive_ddpm = False
+                use_uncertainty_bias = False
+                uncertainty_alpha = 0.0
+                min_full_bar_masks = 0
+                block_min = self.sync_bar_min_block_size
+                block_max = self.sync_bar_max_block_size
+                challenge_center = self.sync_bar_challenge_center
+                challenge_width = self.sync_bar_challenge_width
+                curriculum_weight = 1.0
+                teacher_mask = None
 
             num_attrs_inner = len(target_attributes_inner)
             
@@ -585,14 +755,27 @@ class AbsorbingDiffusion(Sampler):
                 nb = n_bars_batch[i].item()
                 start_bar = min_bars[i].item() 
                 ratio_i = float(ratios[i].item())
-                block_size_i = self._sync_bar_pick_block_size(ratio_i, nb) if adaptive_ddpm else BAR_BLOCK_SIZE
+                block_size_i = self._sync_bar_pick_block_size(
+                    ratio_i,
+                    nb,
+                    min_block_size=block_min,
+                    max_block_size=block_max,
+                    center=challenge_center,
+                    width=challenge_width,
+                ) if adaptive_ddpm else BAR_BLOCK_SIZE
                 num_blocks = math.ceil(nb / max(1, block_size_i))
-                bar_weights = self._sync_bar_bar_weights(start_bar=start_bar, n_bars=nb, device=device) if adaptive_ddpm else None
+                bar_weights = self._sync_bar_bar_weights(
+                    start_bar=start_bar,
+                    n_bars=nb,
+                    device=device,
+                    use_uncertainty_bias=use_uncertainty_bias,
+                    uncertainty_alpha=uncertainty_alpha,
+                ) if adaptive_ddpm else None
                 
                 for idx, ch in enumerate(block_channels):
                     tgt = targets_blocks[i, idx].item()
                     if adaptive_ddpm:
-                        tgt = max(tgt, self.sync_bar_min_full_bar_masks)
+                        tgt = max(tgt, min_full_bar_masks)
                     if tgt > 0:
                         if adaptive_ddpm and bar_weights is not None:
                             block_scores = torch.zeros(num_blocks, device=device, dtype=torch.float)
@@ -639,7 +822,13 @@ class AbsorbingDiffusion(Sampler):
                     total_units = nb * num_attrs_inner
                     
                     if adaptive_ddpm:
-                        bar_weights = self._sync_bar_bar_weights(start_bar=start_bar, n_bars=nb, device=device)
+                        bar_weights = self._sync_bar_bar_weights(
+                            start_bar=start_bar,
+                            n_bars=nb,
+                            device=device,
+                            use_uncertainty_bias=use_uncertainty_bias,
+                            uncertainty_alpha=uncertainty_alpha,
+                        )
                         unit_weights = bar_weights.repeat_interleave(num_attrs_inner)
                         n_samples = min(k_units, int(unit_weights.numel()))
                         perm = torch.multinomial(unit_weights, num_samples=n_samples, replacement=False)
@@ -664,6 +853,13 @@ class AbsorbingDiffusion(Sampler):
             # batch_ids: (B, L)
             batch_ids = torch.arange(b, device=device)[:, None].expand_as(bar_indices)
             mask = mask_lookup[batch_ids, bar_indices]
+
+            if current_strategy == 'sync_bar_mdlm' and teacher_mask is not None:
+                if curriculum_weight <= 0.0:
+                    mask = teacher_mask
+                else:
+                    mix_selector = (torch.rand(mask.shape, device=device) < curriculum_weight)
+                    mask = torch.where(mix_selector, mask, teacher_mask)
 
             # Apply per-channel mask token
             for i in range(len(self.mask_id)):
@@ -781,8 +977,22 @@ class AbsorbingDiffusion(Sampler):
         x_t_input[x_t == -1] = 0
 
         # sample p(x_0 | x_t)
-        raw_logits = self._denoise_fn(x_t_input, t=t)
-        if self.training and self.masking_strategy == 'sync_bar_ddpm' and self.sync_bar_use_uncertainty_bias:
+        if self.masking_strategy == 'sync_bar_mdlm':
+            progress_bucket, uncertainty_bucket, curriculum_weight = self._sync_bar_mdlm_conditioning_buckets(t)
+            try:
+                raw_logits = self._denoise_fn(
+                    x_t_input,
+                    t=t,
+                    progress_bucket=progress_bucket,
+                    uncertainty_bucket=uncertainty_bucket,
+                    curriculum_weight=curriculum_weight,
+                )
+            except TypeError:
+                raw_logits = self._denoise_fn(x_t_input, t=t)
+        else:
+            raw_logits = self._denoise_fn(x_t_input, t=t)
+
+        if self.training and self.masking_strategy in ['sync_bar_ddpm', 'sync_bar_mdlm']:
             self._update_sync_bar_uncertainty(raw_logits, x_0_ignore, x_0)
         x_0_hat_logits = [el.permute(0, 2, 1) for el in raw_logits]
         
@@ -915,6 +1125,9 @@ class AbsorbingDiffusion(Sampler):
         new_Lt_history = (0.1 * Lt2 + 0.9 * Lt2_prev).detach().to(self.loss_history.dtype)
         self.Lt_history.scatter_(dim=0, index=t, src=new_Lt_history)
         self.Lt_count.scatter_add_(dim=0, index=t, src=torch.ones_like(Lt2).to(self.loss_history.dtype))
+
+        if self.training and self.masking_strategy == 'sync_bar_mdlm':
+            self.sync_bar_mdlm_step.add_(1)
 
         return loss.mean(), vb_loss.mean(), mmd_loss, fmd_loss
 

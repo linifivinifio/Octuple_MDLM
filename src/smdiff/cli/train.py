@@ -220,6 +220,8 @@ def main():
     H.mmd_fmd = cfg.get("mmd_fmd", {})
     H.strict_fmd = cfg.get("strict_fmd", {})
     H.sync_bar_ddpm = cfg.get("sync_bar_ddpm", {})
+    H.sync_bar_mdlm = cfg.get("sync_bar_mdlm", {})
+    H.octuple_mdlm = cfg.get("octuple_mdlm", {})
     H.hierarchical_masking = cfg.get("hierarchical_masking", {})
 
     H.wandb = ns.wandb

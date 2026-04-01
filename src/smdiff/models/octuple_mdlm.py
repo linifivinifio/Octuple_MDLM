@@ -52,10 +52,25 @@ class OctupleMDLM(nn.Module):
         # Stage Embedding (E_s) - maps unmasking stage/timestep 't' to an embedding vector
         # Usually total_steps is T. We add 1 for safety.
         num_timesteps = getattr(H, 'total_steps', 1000) + 1
+        self.num_timesteps = max(1, int(getattr(H, 'total_steps', 1000)))
         self.stage_emb = nn.Embedding(num_timesteps, self.n_embd)
+
+        mdlm_cfg = getattr(H, 'octuple_mdlm', {}) or {}
+        if not isinstance(mdlm_cfg, dict):
+            mdlm_cfg = {}
+        self.use_dual_stage_embeddings = bool(mdlm_cfg.get('use_dual_stage_embeddings', False))
+        self.use_curriculum_weight = bool(mdlm_cfg.get('use_curriculum_weight', True))
+        self.progress_buckets = max(2, int(mdlm_cfg.get('progress_buckets', 16)))
+        self.uncertainty_buckets = max(2, int(mdlm_cfg.get('uncertainty_buckets', 8)))
+        if self.use_dual_stage_embeddings:
+            self.progress_bucket_emb = nn.Embedding(self.progress_buckets, self.n_embd)
+            self.uncertainty_bucket_emb = nn.Embedding(self.uncertainty_buckets, self.n_embd)
         
         # Project augmented input back into transformer dimension (W_x)
-        self.W_x = nn.Linear(self.n_embd * 2, self.n_embd)
+        if self.use_dual_stage_embeddings:
+            self.W_x = nn.Linear(self.n_embd * 4, self.n_embd)
+        else:
+            self.W_x = nn.Linear(self.n_embd * 2, self.n_embd)
 
         self.start_tok = nn.Parameter(torch.zeros(1, 1, self.n_embd))
         self.drop = nn.Dropout(H.embd_pdrop)
@@ -83,7 +98,7 @@ class OctupleMDLM(nn.Module):
             if hasattr(module, 'bias') and module.bias is not None:
                 module.bias.data.zero_()
 
-    def forward(self, idx, t=None):
+    def forward(self, idx, t=None, progress_bucket=None, uncertainty_bucket=None, curriculum_weight=None):
         # 1. z^(t) Construction: Map each index to vector and concat
         channel_embs = [emb(idx[:, :, i]) for i, emb in enumerate(self.tok_emb)]
         z_t = torch.cat(channel_embs, -1)
@@ -114,8 +129,30 @@ class OctupleMDLM(nn.Module):
         position_embeddings = self.pos_emb[:, :seq_len, :]
         z_p = z_t + position_embeddings
         
-        # Concat z_p and s_t -> shape (B, seq_len, 2 * n_embd)
-        augmented_input = torch.cat([z_p, s_t], dim=-1)
+        if self.use_dual_stage_embeddings:
+            if progress_bucket is None:
+                if t is None:
+                    progress_bucket = torch.zeros(B, device=z_t.device, dtype=torch.long)
+                else:
+                    progress = torch.clamp(t.float() / float(self.num_timesteps), 0.0, 1.0)
+                    progress_bucket = torch.round(progress * float(self.progress_buckets - 1)).long()
+            progress_bucket = torch.clamp(progress_bucket.long(), 0, self.progress_buckets - 1)
+            s_progress = self.progress_bucket_emb(progress_bucket).unsqueeze(1).expand(-1, seq_len, -1)
+
+            if uncertainty_bucket is None:
+                uncertainty_bucket = torch.zeros(B, device=z_t.device, dtype=torch.long)
+            uncertainty_bucket = torch.clamp(uncertainty_bucket.long(), 0, self.uncertainty_buckets - 1)
+            s_unc = self.uncertainty_bucket_emb(uncertainty_bucket).unsqueeze(1).expand(-1, seq_len, -1)
+
+            if self.use_curriculum_weight and curriculum_weight is not None:
+                c = torch.clamp(curriculum_weight.float(), 0.0, 1.0).view(B, 1, 1)
+                s_progress = s_progress * c
+                s_unc = s_unc * c
+
+            augmented_input = torch.cat([z_p, s_t, s_progress, s_unc], dim=-1)
+        else:
+            # Concat z_p and s_t -> shape (B, seq_len, 2 * n_embd)
+            augmented_input = torch.cat([z_p, s_t], dim=-1)
         
         # W_x projection -> shape (B, seq_len, n_embd)
         x = self.W_x(augmented_input)

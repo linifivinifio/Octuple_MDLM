@@ -41,6 +41,11 @@ MASKING_REGISTRY: Dict[str, MaskingSpec] = {
         description="DDPM-adaptive synchronized masking: sync_bar base logic plus timestep-conditioned block sizing and optional uncertainty-biased bar selection.",
         notes="Backward compatible: defaults reproduce legacy sync_bar behavior when adaptive knobs are disabled.",
     ),
+    "sync_bar_mdlm": MaskingSpec(
+        id="sync_bar_mdlm",
+        description="MDLM-specialized synchronized masking: sync_bar_ddpm adaptive behavior plus deterministic-to-adaptive teacher-forcing curriculum and MDLM conditioning hooks.",
+        notes="Starts with deterministic hierarchical teacher-forced masks and linearly warms up to stochastic/adaptive sync_bar behavior.",
+    ),
     "sync_bar_position": MaskingSpec(
         id="sync_bar_position",
         description="Dynamic attribute-level masking: Dynamic attribute-level masking: Masks the `bar` & `position` token in 16-bar continous chunks; additionally applies `bar_attribute` strategy to all remaining attributes.",
