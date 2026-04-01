@@ -5,6 +5,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def timestep_embedding(timesteps, dim, max_period=10000):
+    half = dim // 2
+    freqs = torch.exp(-math.log(max_period) * torch.arange(0, half, device=timesteps.device, dtype=torch.float) / max(half, 1))
+    args = timesteps.float().unsqueeze(1) * freqs.unsqueeze(0)
+    emb = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+    if dim % 2:
+        emb = F.pad(emb, (0, 1))
+    return emb
+
+
 class CausalSelfOrCrossAttention(nn.Module):
     """
     copied from https://github.com/samb-t/unleashing-transformers
@@ -162,6 +172,16 @@ class UTransformer(nn.Module):
         n_emb = [self.n_embd] if H.tracks == 'melody' else [self.n_embd // i for i in [4, 4, 2]]
 
         self.tok_emb = nn.ModuleList([nn.Embedding(vs, n_emb[i]) for i, vs in enumerate(self.vocab_size)])
+        sync_cfg = getattr(H, 'sync_bar_ddpm', {})
+        if not isinstance(sync_cfg, dict):
+            sync_cfg = {}
+        self.use_timestep_embedding = bool(sync_cfg.get('use_timestep_embedding', False))
+        if self.use_timestep_embedding:
+            self.time_mlp = nn.Sequential(
+                nn.Linear(self.n_embd, self.n_embd),
+                nn.SiLU(),
+                nn.Linear(self.n_embd, self.n_embd),
+            )
         self.drop = nn.Dropout(H.embd_pdrop)
 
         # transformer
@@ -187,11 +207,15 @@ class UTransformer(nn.Module):
 
     def forward(self, idx, t=None):
         # each index maps to a (learnable) vector
-        token_embeddings = [t(idx[:, :, i]) for i, t in enumerate(self.tok_emb)]
+        token_embeddings = [tok_emb(idx[:, :, i]) for i, tok_emb in enumerate(self.tok_emb)]
         token_embeddings = torch.cat(token_embeddings, -1)
 
-        t = token_embeddings.shape[1]
-        assert t <= self.block_size, "Cannot forward, model block size is exhausted."
+        if self.use_timestep_embedding and t is not None:
+            time_emb = timestep_embedding(t, self.n_embd).to(token_embeddings.dtype)
+            token_embeddings = token_embeddings + self.time_mlp(time_emb).unsqueeze(1)
+
+        seq_len = token_embeddings.shape[1]
+        assert seq_len <= self.block_size, "Cannot forward, model block size is exhausted."
         # each position maps to a (learnable) vector
 
         x = token_embeddings
