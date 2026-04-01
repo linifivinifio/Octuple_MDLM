@@ -59,10 +59,19 @@ def save_generated_samples(samples, tokenizer_id, output_dir, prefix="sample"):
     # 1. Ensure Integer Type (Critical fix)
     if isinstance(samples, torch.Tensor):
         samples = samples.cpu().numpy()
-    samples = samples.astype(np.int64)
+
+    if isinstance(samples, np.ndarray):
+        if samples.dtype == object:
+            samples = [np.asarray(s, dtype=np.int64) for s in samples]
+        else:
+            samples = samples.astype(np.int64)
+    elif isinstance(samples, list):
+        samples = [np.asarray(s, dtype=np.int64) for s in samples]
+    else:
+        samples = np.asarray(samples, dtype=np.int64)
 
     # 2. Shape Fix for Melody OneHot
-    if tokenizer_id == 'melody' and samples.ndim == 3 and samples.shape[-1] == 1:
+    if isinstance(samples, np.ndarray) and tokenizer_id == 'melody' and samples.ndim == 3 and samples.shape[-1] == 1:
         samples = samples.squeeze(-1)
 
     # 3. Convert to NoteSequence (using the fixed log_utils logic)
