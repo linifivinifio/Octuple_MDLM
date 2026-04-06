@@ -196,7 +196,9 @@ def main():
     # Override H params from args/context if needed
     H.load_dir = args.load_dir 
     H.masking_strategy = args.strategy
+    model_cfg = load_config(model_id)
     H.hierarchical_masking = load_config(model_id).get("hierarchical_masking", {})
+    H.octuple_mdlm = model_cfg.get("octuple_mdlm", {})
     eos_token = np.array(H.codebook_size, dtype=np.int64) if getattr(H, 'eos', False) else None
     # Ensure Octuple masking strategy if relevant (usually loaded from H)
     

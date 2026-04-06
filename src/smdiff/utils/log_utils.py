@@ -12,6 +12,32 @@ def log(output):
     print(output)
 
 
+def resolve_unique_log_dir(target_dir, max_tries=1000):
+    """
+    Return a unique directory path by appending a numeric suffix if needed.
+
+    Examples:
+      /runs/exp      -> /runs/exp      (if missing)
+      /runs/exp      -> /runs/exp_1    (if /runs/exp exists)
+      /runs/exp      -> /runs/exp_2    (if _1 also exists)
+
+    Returns:
+      (unique_path, suffix_index_or_none)
+    """
+    if not os.path.exists(target_dir):
+        return target_dir, None
+
+    parent, name = os.path.split(target_dir)
+    for idx in range(1, max_tries + 1):
+        candidate = os.path.join(parent, f"{name}_{idx}")
+        if not os.path.exists(candidate):
+            return candidate, idx
+
+    raise RuntimeError(
+        f"Unable to find a unique run directory for '{target_dir}' after {max_tries} attempts."
+    )
+
+
 def config_log(log_dir, filename="log.txt"):
     """
     Configure logging to write to log_dir/logs/filename.

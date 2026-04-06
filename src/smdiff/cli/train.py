@@ -16,7 +16,7 @@ import argparse
 from typing import Dict, List
 
 from hparams.set_up_hparams import get_sampler_hparams
-from smdiff.utils.log_utils import config_log, log, start_training_log
+from smdiff.utils.log_utils import config_log, log, start_training_log, resolve_unique_log_dir
 from smdiff import trainer
 
 from smdiff.registry import resolve_model_id
@@ -227,6 +227,16 @@ def main():
     H.wandb = ns.wandb
     H.wandb_name = ns.wandb_name
     H.wandb_project = ns.wandb_project
+
+    # Avoid overwriting existing run folders by suffixing an index when needed.
+    resolved_log_dir, run_suffix = resolve_unique_log_dir(H.log_dir)
+    if run_suffix is not None:
+        H.log_dir = resolved_log_dir
+        # Keep scratch->home sync target unique as well.
+        project_candidate = f"{H.project_log_dir}_{run_suffix}"
+        H.project_log_dir, _ = resolve_unique_log_dir(project_candidate)
+        print(f"Run directory exists, using indexed path ({H.log_dir})")
+        print(f"Project sync target set to ({H.project_log_dir})")
 
     if not H.load_dir:
         H.load_dir = H.project_log_dir
