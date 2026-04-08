@@ -16,7 +16,13 @@ import argparse
 from typing import Dict, List
 
 from hparams.set_up_hparams import get_sampler_hparams
-from smdiff.utils.log_utils import config_log, log, start_training_log, resolve_unique_log_dir
+from smdiff.utils.log_utils import (
+    config_log,
+    log,
+    start_training_log,
+    resolve_unique_log_dir,
+    resolve_resume_run_dir,
+)
 from smdiff import trainer
 
 from smdiff.registry import resolve_model_id
@@ -76,6 +82,8 @@ def build_underlying_argv(cfg: Dict, ns: argparse.Namespace) -> List[str]:
         args += ["--loss_type", pick("loss_type")]
     if pick("seed"):
         args += ["--seed", str(pick("seed"))]
+    if pick("resume", False):
+        args += ["--resume"]
     if pick("monotonicity_loss"):
         args += ["--monotonicity_loss"]
 
@@ -142,6 +150,8 @@ def main():
     parser.add_argument("--amp", action="store_true", default=None)
     parser.add_argument("--load_dir", type=str, default=None)
     parser.add_argument("--load_step", type=int, default=None)
+    parser.add_argument("--resume", action="store_true", default=None,
+                        help="Resume from the latest checkpoint in an existing run directory")
     parser.add_argument("--log_base_dir", type=str, default=None)
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
@@ -181,6 +191,8 @@ def main():
     selected_loss = ns.loss_type or cfg.get("loss_type") or "mmd_fmd_loss"
     loss_spec = resolve_loss_id(selected_loss)
     cfg["loss_type"] = loss_spec.id
+    resume_requested = cfg.get("resume", False) if ns.resume is None else ns.resume
+    cfg["resume"] = bool(resume_requested)
 
     # Compose argv for existing hparams code
     translated_argv = [sys.argv[0]] + build_underlying_argv(cfg, ns)
@@ -227,19 +239,46 @@ def main():
     H.wandb = ns.wandb
     H.wandb_name = ns.wandb_name
     H.wandb_project = ns.wandb_project
+    H.resume = bool(resume_requested)
 
-    # Avoid overwriting existing run folders by suffixing an index when needed.
-    resolved_log_dir, run_suffix = resolve_unique_log_dir(H.log_dir)
-    if run_suffix is not None:
-        H.log_dir = resolved_log_dir
-        # Keep scratch->home sync target unique as well.
-        project_candidate = f"{H.project_log_dir}_{run_suffix}"
-        H.project_log_dir, _ = resolve_unique_log_dir(project_candidate)
-        print(f"Run directory exists, using indexed path ({H.log_dir})")
-        print(f"Project sync target set to ({H.project_log_dir})")
+    if resume_requested:
+        explicit_load_dir = (ns.load_dir is not None) or (cfg.get("load_dir") is not None)
+        if explicit_load_dir:
+            search_dirs = [H.load_dir]
+        else:
+            search_dirs = [H.log_dir, H.project_log_dir]
 
-    if not H.load_dir:
-        H.load_dir = H.project_log_dir
+        resume_dir, resume_step = resolve_resume_run_dir(search_dirs)
+        if resume_dir is None or resume_step is None:
+            raise FileNotFoundError(
+                "--resume requested but no checkpointed run was found. "
+                "Pass --load_dir to an existing run or start a fresh run without --resume."
+            )
+
+        # Respect explicit --load_step, otherwise continue from latest available checkpoint.
+        requested_step = ns.load_step if ns.load_step is not None else cfg.get("load_step")
+        H.load_step = int(requested_step) if requested_step not in (None, 0) else int(resume_step)
+        if H.load_step <= 0:
+            raise ValueError("--resume requires a positive checkpoint step to continue training.")
+
+        H.load_dir = resume_dir
+        H.log_dir = resume_dir
+        H.project_log_dir = os.path.abspath(os.path.join("runs", os.path.basename(resume_dir)))
+        H.load_optim = True
+        print(f"Resume enabled: continuing run at '{H.log_dir}' from step {H.load_step}")
+    else:
+        # Avoid overwriting existing run folders by suffixing an index when needed.
+        resolved_log_dir, run_suffix = resolve_unique_log_dir(H.log_dir)
+        if run_suffix is not None:
+            H.log_dir = resolved_log_dir
+            # Keep scratch->home sync target unique as well.
+            project_candidate = f"{H.project_log_dir}_{run_suffix}"
+            H.project_log_dir, _ = resolve_unique_log_dir(project_candidate)
+            print(f"Run directory exists, using indexed path ({H.log_dir})")
+            print(f"Project sync target set to ({H.project_log_dir})")
+
+        if not H.load_dir:
+            H.load_dir = H.project_log_dir
 
     # Proceed with training
     config_log(H.log_dir)

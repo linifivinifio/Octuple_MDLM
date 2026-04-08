@@ -47,6 +47,7 @@ class HparamsAbsorbing(HparamsBase):
         self.validation_set_size = 0.05
         self.augment = False
         self.eos = True
+        self.resume = False
 
         self.apply_parser_values(parser)
 
@@ -64,7 +65,7 @@ class HparamsAbsorbing(HparamsBase):
         print("DEEBUG: Tracks: ", self.tracks)
         self.codebook_size = (128, ) if self.tracks == 'melody' else (128, 128, 128)
         self.latent_shape = (self.NOTES, len(self.codebook_size))
-        self.load_optim = self.load_step != 0
+        self.load_optim = bool(self.resume or self.load_step != 0)
 
 
 class HparamsAbsorbingConv(HparamsAbsorbing):

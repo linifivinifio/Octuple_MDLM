@@ -1,4 +1,5 @@
 import os
+import re
 import torch
 import numpy as np
 import logging
@@ -36,6 +37,83 @@ def resolve_unique_log_dir(target_dir, max_tries=1000):
     raise RuntimeError(
         f"Unable to find a unique run directory for '{target_dir}' after {max_tries} attempts."
     )
+
+
+def _iter_run_dir_variants(base_dir):
+    """Yield existing run directories matching base_dir or base_dir_<N>."""
+    base_dir = os.path.abspath(base_dir)
+    parent, name = os.path.split(base_dir)
+    if not parent:
+        return
+    if not os.path.isdir(parent):
+        return
+
+    pattern = re.compile(rf"^{re.escape(name)}(?:_(\d+))?$")
+    for entry in os.listdir(parent):
+        m = pattern.match(entry)
+        if not m:
+            continue
+        candidate = os.path.join(parent, entry)
+        if os.path.isdir(candidate):
+            yield candidate
+
+
+def find_latest_checkpoint_step(run_dir):
+    """Return the highest model checkpoint step in run_dir/checkpoints, or None."""
+    ckpt_dir = os.path.join(run_dir, "checkpoints")
+    if not os.path.isdir(ckpt_dir):
+        return None
+
+    pattern = re.compile(r"^model_(\d+)\.th$")
+    max_step = None
+    for fname in os.listdir(ckpt_dir):
+        m = pattern.match(fname)
+        if not m:
+            continue
+        step = int(m.group(1))
+        if max_step is None or step > max_step:
+            max_step = step
+    return max_step
+
+
+def resolve_resume_run_dir(base_dirs):
+    """
+    Find the best run directory to resume from across one or more base dirs.
+
+    Returns:
+      (run_dir, step) where step is the latest numeric model checkpoint step.
+      Returns (None, None) if no checkpointed run is found.
+    """
+    if isinstance(base_dirs, str):
+        base_dirs = [base_dirs]
+
+    seen = set()
+    best_dir, best_step, best_mtime = None, None, None
+
+    for base in base_dirs:
+        if not base:
+            continue
+        for candidate in _iter_run_dir_variants(base):
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+
+            step = find_latest_checkpoint_step(candidate)
+            if step is None:
+                continue
+
+            ckpt_dir = os.path.join(candidate, "checkpoints")
+            mtime = os.path.getmtime(ckpt_dir)
+            if (
+                best_step is None
+                or step > best_step
+                or (step == best_step and (best_mtime is None or mtime > best_mtime))
+            ):
+                best_dir = candidate
+                best_step = step
+                best_mtime = mtime
+
+    return best_dir, best_step
 
 
 def config_log(log_dir, filename="log.txt"):
